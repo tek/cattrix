@@ -46,6 +46,7 @@ val play = pro("play")
   .settings(
     libraryDependencies ++= List(
       "com.typesafe.play" %% "play" % "2.6.12",
+      "com.typesafe.play" %% "play-guice" % "2.6.12",
       "com.typesafe.play" %% "play-ahc-ws" % "2.6.12",
       "com.typesafe.play" %% "play-specs2" % "2.6.12" % "test",
       "de.leanovate.play-mockws" %% "play-mockws" % "2.6.2" % "test",
