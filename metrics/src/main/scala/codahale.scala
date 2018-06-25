@@ -1,66 +1,37 @@
 package chm
 
-import cats.Monad
+import java.util.concurrent.TimeUnit
+
+import cats.{Monad, ~>}
 import cats.data.Kleisli
 import cats.effect.Sync
-import com.codahale.metrics.{MetricRegistry, Counter, Meter, Timer, SharedMetricRegistries}
+import com.codahale.metrics.{MetricRegistry, Counter, Meter, Timer, SharedMetricRegistries, Histogram}
 
 import Codahale.CodahaleOp
 import CodahaleOps._
 
-case class Codahale(registry: String, prefix: String, interpreter: Codahale.Interpreter)
+sealed trait CodahaleInterpreter[F[_]]
+
+case class NativeInterpreter[F[_]]()
+extends CodahaleInterpreter[F]
+
+case class CustomInterpreter[F[_]](handler: Codahale[F] => (MetricAction ~> F))
+extends CodahaleInterpreter[F]
+
+case class Codahale[F[_]](registry: String, prefix: String, interpreter: CodahaleInterpreter[F])
 
 object Codahale
+extends CodahaleInstances
+with CodahaleFunctions
 {
-  sealed trait Interpreter
-
-  case object NativeInterpreter
-  extends Interpreter
-
-  case class CustomInterpreter(handler: Codahale => MetricAction => Unit)
-  extends Interpreter
-
-  implicit def Metrics_CHMetrics: Metrics[Codahale] =
-    new Metrics[Codahale] {
-      def run[F[_]: Sync](metrics: Codahale)(metric: MetricAction): F[Unit] =
-        metrics.interpreter match {
-          case NativeInterpreter => ExecCodahale.compile(metric).run(metrics)
-          case CustomInterpreter(handler) => Sync[F].delay(handler(metrics)(metric))
-        }
-    }
-
-  type CodahaleOp[F[_], A] = Kleisli[F, Codahale, A]
-
-  def withInterpreter(prefix: String, interpreter: Interpreter): Codahale = Codahale("default", prefix, interpreter)
-
-  def as(prefix: String): Codahale = withInterpreter(prefix, NativeInterpreter)
+  type CodahaleOp[F[_], A] = Kleisli[F, Codahale[F], A]
 }
 
 object CodahaleOp
 {
-  def lift[F[_]: Sync, A](f: MetricRegistry => A): CodahaleOp[F, A] =
-    Kleisli(ExecCodahale.exec[F, A](f))
-
-  def delay[F[_]: Sync, A](f: => A): CodahaleOp[F, A] = lift(reg => f)
-}
-
-object CodahaleOps
-{
-  def metricName(path: String, name: String): String =
-    MetricRegistry.name(path, name)
-
   type RegistryCons[A] = String => MetricRegistry => A
 
-  def flip[A](cons: MetricRegistry => String => A): RegistryCons[A] = prefix => registry => cons(registry)(prefix)
-
-  val consCounter: RegistryCons[Counter] = flip(_.counter)
-  val consMeter: RegistryCons[Meter] = flip(_.meter)
-  val consTimer: RegistryCons[Timer] = flip(_.timer)
-}
-
-object ExecCodahale
-{
-  def exec[F[_]: Sync, A](op: MetricRegistry => A)(metrics: Codahale): F[A] = {
+  def exec[F[_]: Sync, A](op: MetricRegistry => A)(metrics: Codahale[F]): F[A] = {
     val registry = SharedMetricRegistries.getOrCreate(metrics.registry)
     Sync[F].delay(op(registry))
   }
@@ -68,63 +39,80 @@ object ExecCodahale
   def consMetric[F[_]: Sync, A](cons: RegistryCons[A]): String => CodahaleOp[F, A] =
     name => Kleisli(metrics => exec(cons(metricName(metrics.prefix, name)))(metrics))
 
-  def metricOp[F[_]: Sync, A, B](cons: RegistryCons[B])(f: B => A)(name: String): CodahaleOp[F, A] =
+  def lift[F[_]: Sync, A](f: MetricRegistry => A): CodahaleOp[F, A] =
+    Kleisli(exec[F, A](f))
+
+  def delay[F[_]: Sync, A](f: => A): CodahaleOp[F, A] = lift(reg => f)
+
+  def metricName(path: String, name: String): String =
+    MetricRegistry.name(path, name)
+
+  def flip[A](cons: MetricRegistry => String => A): RegistryCons[A] = prefix => registry => cons(registry)(prefix)
+
+  def metric[F[_]: Sync, A, B](cons: MetricRegistry => String => B)(f: B => A)(name: String): CodahaleOp[F, A] =
     for {
-      c <- consMetric(cons).apply(name)
-      a <- CodahaleOp.delay(f(c))
+      c <- consMetric(flip(cons)).apply(name)
+      a <- delay(f(c))
     } yield a
-
-  def counterOp[F[_]: Sync, A]: (Counter => A) => String => CodahaleOp[F, A] =
-    metricOp(consCounter) _
-
-  def compile[F[_]: Sync: Monad](action: MetricAction): CodahaleOp[F, Unit] = {
-    val cons = action match {
-      case IncCounter(name) =>
-        counterOp.apply(_.inc())(name)
-      case DecCounter(name) =>
-        counterOp.apply(_.dec())(name)
-    }
-    cons
-  }
 }
 
-// case class MetricData(name: String, timer: Timer.Context)
+object CodahaleOps
+{
+  def counter[F[_]: Sync, A]: (Counter => A) => String => CodahaleOp[F, A] =
+    CodahaleOp.metric(_.counter) _
 
-// object Metrics
-// {
-//   def metricName(path: String, name: String): String =
-//     MetricRegistry.name(path, name)
+  def meter[F[_]: Sync, A]: (Meter => A) => String => CodahaleOp[F, A] =
+    CodahaleOp.metric(_.meter) _
 
-//   def requestTimer(name: String)(registry: MetricRegistry)(implicit ec: ExecutionContext): Future[Timer] =
-//     Future(registry.timer(metricName(name, "requestTimer")))
+  def timer[F[_]: Sync, A]: (Timer => A) => String => CodahaleOp[F, A] =
+    CodahaleOp.metric(_.timer) _
 
-//   def counter(name: String, metric: String)(registry: MetricRegistry)(implicit ec: ExecutionContext): Future[Counter] =
-//     Future(registry.counter(metricName(name, metric)))
+  def histogram[F[_]: Sync, A]: (Histogram => A) => String => CodahaleOp[F, A] =
+    CodahaleOp.metric(_.histogram) _
+}
 
-//   def inc(name: String, metric: String)(registry: MetricRegistry)(implicit ec: ExecutionContext): Future[Unit] =
-//     for {
-//       c <- counter(name, metric)(registry)
-//       _ <- Future(c.inc())
-//     } yield ()
+trait CodahaleInstances
+{
+  implicit def Metrics_CHMetrics[F[_]: Sync]: Metrics[F, Codahale[F]] =
+    new Metrics[F, Codahale[F]] {
+      def run[A](metrics: Codahale[F])(metric: MetricAction[A]): F[A] =
+        metrics.interpreter match {
+          case NativeInterpreter() => NativeInterpreter.compile.apply(metric).run(metrics)
+          case CustomInterpreter(handler) => handler(metrics)(metric)
+        }
+    }
+}
 
-//   def dec(name: String, metric: String)(registry: MetricRegistry)(implicit ec: ExecutionContext): Future[Unit] =
-//     for {
-//       c <- counter(name, metric)(registry)
-//       _ <- Future(c.dec())
-//     } yield ()
+trait CodahaleFunctions
+{
+  def withInterpreter[F[_]](prefix: String, interpreter: CodahaleInterpreter[F]): Codahale[F] =
+    Codahale("default", prefix, interpreter)
 
-//   def failures(name: String)(registry: MetricRegistry)(implicit ec: ExecutionContext): Future[Counter] =
-//     counter(name, "failure")(registry)
+  def as[F[_]](prefix: String): Codahale[F] = withInterpreter(prefix, NativeInterpreter())
+}
 
-//   def meter(name: String, metric: String)(registry: MetricRegistry)(implicit ec: ExecutionContext): Future[Meter] =
-//     Future(registry.meter(metricName(name, metric)))
-
-//   def mark(name: String, metric: String)(registry: MetricRegistry)(implicit ec: ExecutionContext): Future[Unit] =
-//     for {
-//       c <- meter(name, metric)(registry)
-//       _ <- Future(c.mark())
-//     } yield ()
-
-//   def statusCode(name: String)(code: Int)(registry: MetricRegistry)(implicit ec: ExecutionContext): Future[Unit] =
-//     mark(name, code.toString)(registry)
-// }
+object NativeInterpreter
+{
+  def compile[F[_]: Sync]: MetricAction ~> CodahaleOp[F, ?] =
+    new (MetricAction ~> CodahaleOp[F, ?]) {
+      def apply[A](action: MetricAction[A]): CodahaleOp[F, A] = {
+        action match {
+          case IncCounter(name) =>
+            counter.apply(_.inc())(name)
+          case DecCounter(name) =>
+            counter.apply(_.dec())(name)
+          case StartTimer(name) =>
+            for {
+              start <- CodahaleOp.delay(System.nanoTime())
+            } yield TimerData(name, start)
+          case StopTimer(data) =>
+            for {
+              stop <- CodahaleOp.delay(System.nanoTime())
+              _ <- timer.apply(_.update(stop - data.start, TimeUnit.NANOSECONDS))(data.name)
+            } yield ()
+          case Mark(name) =>
+            meter.apply(_.mark())(name)
+        }
+      }
+    }
+}

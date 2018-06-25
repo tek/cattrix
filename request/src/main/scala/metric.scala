@@ -7,6 +7,6 @@ extends RequestMetric
 
 case class DynamicRequestMetric(
   name: RequestTask => String,
-  error: (RequestTask, Option[Response]) => Option[String],
+  error: Response => Option[String],
 )
 extends RequestMetric

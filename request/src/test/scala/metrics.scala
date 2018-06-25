@@ -10,13 +10,13 @@ class MetricsSpec
 extends Specification
 {
   def is = s2"""
-  foo $foo
-  http $http
+  compose metrics actions $compose
+  run an http request $http
   """
 
   def run: IO[Int] = IO.pure(5)
 
-  def foo = {
+  def compose = {
     val steps = for {
       _ <- Metrics.incCounter[IO]("active")
       r <- MetricsEval.run(Eval.now(run))
@@ -27,7 +27,7 @@ extends Specification
 
   def http = {
     val payload = "hello"
-    val m = Codahale.as("io.tryp")
+    val m = Codahale.as[IO]("io.tryp")
     val sh = PureHttp.partial[IO] { case a => IO.pure(Right(Response.ok(payload))) }
     val http = Http.fromConfig(HttpConfig(sh, m))
     val io: IO[Either[String, Response]] = http.get("http://tryp.io", "tryp")
