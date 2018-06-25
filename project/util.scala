@@ -7,6 +7,10 @@ extends AutoPlugin
   {
     val catsVersion = settingKey[String]("cats version")
 
+    def testDeps = libraryDependencies ++= List(
+      "org.specs2" %% "specs2-core" % "4.1.0" % "test"
+    )
+
     def pro(n: String) =
       Project(n, file(n))
       .settings(
@@ -14,7 +18,16 @@ extends AutoPlugin
         addCompilerPlugin("org.scalameta" % "paradise" % "3.0.0-M10" cross CrossVersion.full),
         addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.7"),
         resolvers += Resolver.sonatypeRepo("releases"),
-        scalacOptions += "-Ypartial-unification",
+        scalacOptions ++= List(
+          "-feature",
+          "-deprecation",
+          "-unchecked",
+          "-Ypartial-unification",
+          "-language:higherKinds",
+          "-language:implicitConversions",
+        ),
+        fork := true,
       )
+      .settings(testDeps)
   }
 }

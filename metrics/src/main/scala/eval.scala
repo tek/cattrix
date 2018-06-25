@@ -1,4 +1,4 @@
-package sf
+package chm
 
 import cats.{Monad, Eval, Applicative}
 import cats.effect.Sync

@@ -1,18 +1,18 @@
-package sf
+package chm
 
 import cats.Functor
 import cats.syntax.functor._
 import cats.effect.{IO, LiftIO, Sync}
 import play.api.libs.ws.{WSAuthScheme, WSClient, WSResponse}
 
-case class WsHttp[F[_]](client: WSClient)
+case class WsRequest[F[_]](client: WSClient)
 
-object WsHttp
+object WsRequest
 {
-  implicit def HttpRequest_WsHttp[F[_]: Sync: LiftIO]: HttpRequest[F, WsHttp] =
-    new HttpRequest[F, WsHttp] {
-      def execute(resources: WsHttp[F])(request: Request): F[Either[String, Response]] =
-        WsHttp.execute[F](resources.client)(request)
+  implicit def HttpRequest_WsHttp[F[_]: Sync: LiftIO]: HttpRequest[F, WsRequest] =
+    new HttpRequest[F, WsRequest] {
+      def execute(resources: WsRequest[F])(request: Request): F[Either[String, Response]] =
+        WsRequest.execute[F](resources.client)(request)
     }
 
   def responseCookies(rs: WSResponse): List[Cookie] = rs.cookies.map(a => Cookie(a.name, a.value)).toList
@@ -31,10 +31,6 @@ object WsHttp
       .map(headered.withBody[String])
       .getOrElse(headered)
     LiftIO[F].liftIO(IO.fromFuture(IO(bodied.execute(request.method.toUpperCase))))
-      .map { rs =>
-        println(rs)
-        println(rs.body)
-        Right(Response(rs.status, rs.body, responseHeaders(rs), responseCookies(rs)))
-      }
+      .map(rs => Right(Response(rs.status, rs.body, responseHeaders(rs), responseCookies(rs))))
   }
 }

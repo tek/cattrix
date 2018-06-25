@@ -1,4 +1,4 @@
-package sf
+package chm
 
 import cats.Applicative
 import cats.effect.Sync
@@ -47,7 +47,7 @@ case class PureHttp[F[_]](handler: Request => F[Either[String, Response]])
 
 object PureHttp
 {
-  implicit def HttpRequest_StrictHttp[F[_]: Sync, A]: HttpRequest[F, PureHttp] =
+  implicit def HttpRequest_PureHttp[F[_]: Sync, A]: HttpRequest[F, PureHttp] =
     new HttpRequest[F, PureHttp] {
       def execute(resources: PureHttp[F])(request: Request): F[Either[String, Response]] =
         resources.handler(request)

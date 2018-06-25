@@ -1,4 +1,4 @@
-package sf
+package chm
 
 import cats.Applicative
 import cats.effect.Sync

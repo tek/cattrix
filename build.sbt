@@ -1,7 +1,6 @@
 scalaVersion := "2.12.4"
 organization := "io.tryp"
 name := "cats-http-metrics"
-fork := true
 publishMavenStyle := true
 publishTo := Some(
   if (isSnapshot.value) Opts.resolver.sonatypeSnapshots
@@ -28,13 +27,10 @@ releaseProcess := Seq[ReleaseStep](
   commitNextVersion
 )
 
-def testDeps = libraryDependencies ++= List(
-  "org.specs2" %% "specs2-core" % "4.1.0" % "test"
-)
-
 val metrics = pro("metrics")
   .settings(
     libraryDependencies ++= List(
+      "org.log4s" %% "log4s" % "1.6.1",
       "org.typelevel" %% "cats-core" % "1.1.0",
       "org.typelevel" %% "cats-effect" % "1.0.0-RC2",
       "io.dropwizard.metrics" % "metrics-core" % "3.1.2",
@@ -44,14 +40,16 @@ val metrics = pro("metrics")
 
 val request = pro("request")
   .dependsOn(metrics)
-  .settings(testDeps)
+
+val play = pro("play")
+  .dependsOn(request)
   .settings(
     libraryDependencies ++= List(
-      "org.log4s" %% "log4s" % "1.6.1",
       "com.typesafe.play" %% "play" % "2.6.12",
-      "com.typesafe.play" %% "play-ws" % "2.6.12",
-      "io.frees" %% "frees-core" % "0.8.2",
+      "com.typesafe.play" %% "play-ahc-ws" % "2.6.12",
+      "com.typesafe.play" %% "play-specs2" % "2.6.12" % "test",
+      "de.leanovate.play-mockws" %% "play-mockws" % "2.6.2" % "test",
     )
   )
 
-val root = project.in(file(".")).settings(publish := (()), publishLocal := (())).aggregate(metrics, request)
+val root = project.in(file(".")).settings(publish := (()), publishLocal := (())).aggregate(metrics, request, play)
