@@ -4,6 +4,7 @@ import java.util.concurrent.TimeUnit
 
 import cats.{Monad, ~>}
 import cats.data.Kleisli
+import cats.arrow.FunctionK
 import cats.effect.Sync
 import com.codahale.metrics.{MetricRegistry, Counter, Meter, Timer, SharedMetricRegistries, Histogram}
 
@@ -15,7 +16,7 @@ sealed trait CodahaleInterpreter[F[_]]
 case class NativeInterpreter[F[_]]()
 extends CodahaleInterpreter[F]
 
-case class CustomInterpreter[F[_]](handler: Codahale[F] => (MetricAction ~> F))
+case class CustomInterpreter[F[_]](handler: Codahale[F] => (MetricAction[F, ?] ~> F))
 extends CodahaleInterpreter[F]
 
 case class Codahale[F[_]](registry: String, prefix: String, interpreter: CodahaleInterpreter[F])
@@ -75,10 +76,21 @@ trait CodahaleInstances
 {
   implicit def Metrics_CHMetrics[F[_]: Sync]: Metrics[F, Codahale[F]] =
     new Metrics[F, Codahale[F]] {
-      def run[A](metrics: Codahale[F])(metric: MetricAction[A]): F[A] =
-        metrics.interpreter match {
-          case NativeInterpreter() => NativeInterpreter.compile.apply(metric).run(metrics)
-          case CustomInterpreter(handler) => handler(metrics)(metric)
+      def run[A](resources: Codahale[F])(metric: MetricAction[F, A]): F[A] =
+        resources.interpreter match {
+          case NativeInterpreter() => NativeInterpreter.compile.apply(metric).run(resources)
+          case CustomInterpreter(handler) => handler(resources)(metric)
+        }
+
+      def interpreter(resources: Codahale[F]): MetricAction[F, ?] ~> F =
+        resources.interpreter match {
+          case NativeInterpreter() => NativeInterpreter.compile[F].andThen(runOp(resources))
+          case CustomInterpreter(handler) => handler(resources)
+        }
+
+      def runOp[F[_]](resources: Codahale[F]): CodahaleOp[F, ?] ~> F =
+        new (CodahaleOp[F, ?] ~> F) {
+          def apply[A](op: CodahaleOp[F, A]): F[A] = op.run(resources)
         }
     }
 }
@@ -93,25 +105,28 @@ trait CodahaleFunctions
 
 object NativeInterpreter
 {
-  def compile[F[_]: Sync]: MetricAction ~> CodahaleOp[F, ?] =
-    new (MetricAction ~> CodahaleOp[F, ?]) {
-      def apply[A](action: MetricAction[A]): CodahaleOp[F, A] = {
+  def compile[F[_]: Sync]: MetricAction[F, ?] ~> CodahaleOp[F, ?] =
+    new (MetricAction[F, ?] ~> CodahaleOp[F, ?]) {
+      def apply[A](action: MetricAction[F, A]): CodahaleOp[F, A] = {
+        type M[X] = F[X]
         action match {
           case IncCounter(name) =>
-            counter.apply(_.inc())(name)
+            counter[M, A].apply(_.inc())(name)
           case DecCounter(name) =>
-            counter.apply(_.dec())(name)
+            counter[M, A].apply(_.dec())(name)
           case StartTimer(name) =>
             for {
-              start <- CodahaleOp.delay(System.nanoTime())
+              start <- CodahaleOp.delay[M, Long](System.nanoTime())
             } yield TimerData(name, start)
           case StopTimer(data) =>
             for {
-              stop <- CodahaleOp.delay(System.nanoTime())
-              _ <- timer.apply(_.update(stop - data.start, TimeUnit.NANOSECONDS))(data.name)
+              stop <- CodahaleOp.delay[M, Long](System.nanoTime())
+              _ <- timer[M, A].apply(_.update(stop - data.start, TimeUnit.NANOSECONDS))(data.name)
             } yield ()
           case Mark(name) =>
-            meter.apply(_.mark())(name)
+            meter[M, A].apply(_.mark())(name)
+          case Run(thunk) =>
+            Kleisli.liftF(thunk())
         }
       }
     }

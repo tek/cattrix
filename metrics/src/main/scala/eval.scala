@@ -1,9 +1,10 @@
 package chm
 
-import cats.{Monad, Eval, Applicative}
+import cats.{Monad, Eval, Applicative, Functor}
 import cats.effect.Sync
 import cats.syntax.flatMap._
 import cats.syntax.functor._
+import cats.free.FreeT
 
 sealed trait MetricsEval[F[_], A]
 
@@ -13,7 +14,7 @@ extends MetricsEvalInstances
   case class Pure[F[_], A](value: A)
   extends MetricsEval[F, A]
 
-  case class Metric[F[_], A](metric: MetricAction[A])
+  case class Metric[F[_], A](metric: MetricAction[F, A])
   extends MetricsEval[F, A]
 
   case class Suspend[F[_], A](thunk: Eval[F[A]])
@@ -46,6 +47,40 @@ extends MetricsEvalInstances
       case Suspend(thunk) => thunk.value
       case s @ Bind(head, tail) => s.run(resources)
     }
+  }
+}
+
+object MetricsEval1
+{
+  type ME[F[_], A] = FreeT[MetricAction[F, ?], F, A]
+
+  def incCounter[F[_]: Applicative](name: String): ME[F, Unit] =
+    FreeT.liftF[MetricAction[F, ?], F, Unit](IncCounter(name))
+
+  def decCounter[F[_]: Applicative](name: String): ME[F, Unit] =
+    FreeT.liftF[MetricAction[F, ?], F, Unit](DecCounter(name))
+
+  def timer[F[_]: Applicative](name: String): ME[F, TimerData] =
+    FreeT.liftF[MetricAction[F, ?], F, TimerData](StartTimer(name))
+
+  def time[F[_]: Applicative](data: TimerData): ME[F, Unit] =
+    FreeT.liftF[MetricAction[F, ?], F, Unit](StopTimer(data))
+
+  def mark[F[_]: Applicative](name: String): ME[F, Unit] =
+    FreeT.liftF[MetricAction[F, ?], F, Unit](Mark(name))
+
+  def run[F[_]: Applicative, A](thunk: Eval[F[A]]): ME[F, A] =
+    FreeT.liftF[MetricAction[F, ?], F, A](Run(thunk))
+
+  def unit[F[_]: Applicative]: ME[F, Unit] =
+    FreeT.pure(())
+
+  def io[F[_]: Sync, A, M]
+  (resources: M)
+  (fa: MetricsEval1.ME[F, A])
+  (implicit metrics: Metrics[F, M])
+  : F[A] = {
+    fa.foldMap(metrics.interpreter(resources))
   }
 }
 

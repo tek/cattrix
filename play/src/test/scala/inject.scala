@@ -41,13 +41,13 @@ extends PlaySpecification
     case a => Action(Results.Ok(payload))
   }
 
-  val metricsLog: ArrayBuffer[MetricAction[_]] = ArrayBuffer()
+  val metricsLog: ArrayBuffer[MetricAction[Future, _]] = ArrayBuffer()
 
-  def interpreter(resources: Codahale[Future]): MetricAction ~> Future =
-    new (MetricAction ~> Future) {
-      def apply[A](action: MetricAction[A]): Future[A] = {
+  def interpreter(resources: Codahale[Future]): MetricAction[Future, ?] ~> Future =
+    new (MetricAction[Future, ?] ~> Future) {
+      def apply[A](action: MetricAction[Future, A]): Future[A] = {
         metricsLog.append(action)
-        NoMetrics.interpreter[Future, A](action)
+        NoMetrics.interpreter[Future].apply(action)
       }
     }
 
@@ -70,7 +70,10 @@ extends PlaySpecification
     val ctrl = app.injector.instanceOf[Ctrl]
     val result = ctrl.act()(FakeRequest())
     contentAsString(result).must_==(payload)
-      .and(metricsLog.toList.must_==(List(
+      .and(metricsLog.toList.filter {
+        case Run(a) => false
+        case _ => true
+      }.must_==(List(
         StartTimer("requestTimer"),
         IncCounter("activeRequests"),
         DecCounter("activeRequests"),

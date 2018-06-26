@@ -8,6 +8,7 @@ import cats.syntax.flatMap._
 import cats.syntax.functor._
 import cats.syntax.applicativeError._
 import cats.effect.Sync
+import cats.free.FreeT
 import com.codahale.metrics.{MetricRegistry, Counter, Meter, Timer, SharedMetricRegistries}
 import org.log4s.getLogger
 
@@ -92,6 +93,56 @@ object RequestMetrics
     } yield result
     MetricsEval.io(resources)(steps)
   }
+
+  def responseMetric1[F[_]: Sync](metric: RequestMetric, response: Response): MetricsEval1.ME[F, Unit] = {
+    for {
+      _ <- MetricsEval1.mark[F](response.status.toString)
+      _ <- metric match {
+        case StaticRequestMetric(_, Some(name)) if (response.status >= 400) =>
+          val statusGroup = if (response.status < 500) "4xx" else "5xx"
+          for {
+            _ <- MetricsEval1.mark[F](statusGroup)
+            _ <- MetricsEval1.incCounter[F](name)
+          } yield ()
+        case DynamicRequestMetric(_, err) =>
+          err(response) match {
+            case Some(metric) =>
+              MetricsEval1.incCounter[F](metric)
+            case None =>
+              MetricsEval1.unit[F]
+          }
+        case _ =>
+          MetricsEval1.unit[F]
+      }
+    } yield ()
+  }
+
+  def resultMetrics1[F[_]: Sync](metric: RequestMetric, result: Either[Throwable, Either[String, Response]])
+  : MetricsEval1.ME[F, Unit] =
+    result match {
+      case Right(Right(r)) => responseMetric1(metric, r)
+      case Right(Left(r)) => MetricsEval1.mark[F]("fatal")
+      case Left(error) => MetricsEval1.mark[F]("fatal")
+    }
+
+  def wrapFree[F[_]: Sync, M]
+  (resources: M)
+  (metric: RequestMetric)
+  (thunk: Eval[F[Either[String, Response]]])
+  (implicit metrics: Metrics[F, M])
+  : F[Either[String, Response]] = {
+    val steps: MetricsEval1.ME[F, Either[String, Response]] = for {
+      t <- MetricsEval1.timer[F]("requestTimer")
+      _ <- MetricsEval1.incCounter[F]("activeRequests")
+      // response <- FreeT.liftT(thunk.map(_.attempt))
+      response <- MetricsEval1.run(thunk.map(_.attempt))
+      _ <- MetricsEval1.decCounter[F]("activeRequests")
+      _ <- MetricsEval1.time[F](t)
+      _ <- resultMetrics1[F](metric, response)
+      result <- FreeT.liftT(ApplicativeError[F, Throwable].fromEither(response))
+    } yield result
+    MetricsEval1.io(resources)(steps)
+  }
 }
 
 case class HttpConfig[F[_], R[_[_]], M](request: R[F], metrics: M)
@@ -115,7 +166,7 @@ object Http
   def fromConfig[F[_]: Sync, R[_[_]], M](conf: HttpConfig[F, R, M])
   (implicit httpRequest: HttpRequest[F, R], metrics: Metrics[F, M])
   : Http[F] =
-    Http(httpRequest.execute(conf.request), RequestMetrics.wrap[F, M](conf.metrics))
+    Http(httpRequest.execute(conf.request), RequestMetrics.wrapFree[F, M](conf.metrics))
 
   def execute[F[_]](http: Http[F], task: RequestTask)(implicit S: Sync[F]) = {
     Http.log.debug(task.toString)

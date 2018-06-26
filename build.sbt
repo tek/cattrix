@@ -32,6 +32,7 @@ val metrics = pro("metrics")
     libraryDependencies ++= List(
       "org.log4s" %% "log4s" % "1.6.1",
       "org.typelevel" %% "cats-core" % "1.1.0",
+      "org.typelevel" %% "cats-free" % "1.1.0",
       "org.typelevel" %% "cats-effect" % "1.0.0-RC2",
       "io.dropwizard.metrics" % "metrics-core" % "3.1.2",
       "com.github.mpilquist" %% "simulacrum" % "0.12.0",
