@@ -39,28 +39,14 @@ object NoMetrics
         interpreter(metrics)(action)
 
       def interpreter(metrics: NoMetrics): MetricAction[F, ?] ~> F =
-        new (MetricAction[F, ?] ~> F) {
-          def apply[A](action: MetricAction[F, A]): F[A] = {
-            type FF[A] = F[A]
-            val unit = Applicative[FF].pure(())
-            action match {
-              case StartTimer(name) =>
-                Applicative[FF].pure(TimerData(name, 0))
-              case IncCounter(name) => unit
-              case DecCounter(name) => unit
-              case StopTimer(data) => unit
-              case Mark(name) => unit
-              case Run(thunk) => thunk.value
-            }
-          }
-        }
+        NoMetrics.interpreter[F]
     }
 
   def interpreter[F[_]: Applicative]: MetricAction[F, ?] ~> F =
     new (MetricAction[F, ?] ~> F) {
       def apply[A](action: MetricAction[F, A]): F[A] = {
+        val unit = Applicative[F].pure(())
         type FF[A] = F[A]
-        val unit = Applicative[FF].pure(())
         action match {
           case StartTimer(name) =>
             Applicative[FF].pure(TimerData(name, 0))
