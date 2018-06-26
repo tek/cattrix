@@ -126,7 +126,7 @@ object NativeInterpreter
           case Mark(name) =>
             meter[M, A].apply(_.mark())(name)
           case Run(thunk) =>
-            Kleisli.liftF(thunk())
+            Kleisli.liftF(thunk.value)
         }
       }
     }
