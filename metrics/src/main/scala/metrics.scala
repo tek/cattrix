@@ -1,32 +1,38 @@
 package chm
 
-import cats.Applicative
-import cats.~>
-import cats.arrow.FunctionK
-import cats.effect.Sync
+import cats.{~>, Eval, Applicative}
+import cats.free.FreeT
 
 trait Metrics[F[_], A]
 {
-  def run[B](metrics: A)(action: MetricAction[F, B]): F[B]
-  def interpreter(metrics: A): MetricAction[F, ?] ~> F
+  def run[B](metrics: A)(action: Metric[F, B]): F[B]
+  def interpreter(metrics: A): Metric[F, ?] ~> F
 }
 
 object Metrics
 {
-  def incCounter[F[_]](name: String): MetricsEval[F, Unit] =
-    MetricsEval.Metric(IncCounter(name))
+  type Step[F[_], A] = FreeT[Metric[F, ?], F, A]
 
-  def decCounter[F[_]](name: String): MetricsEval[F, Unit] =
-    MetricsEval.Metric(DecCounter(name))
+  def incCounter[F[_]: Applicative](name: String): Step[F, Unit] =
+    FreeT.liftF[Metric[F, ?], F, Unit](IncCounter(name))
 
-  def timer[F[_]](name: String): MetricsEval[F, TimerData] =
-    MetricsEval.Metric(StartTimer(name))
+  def decCounter[F[_]: Applicative](name: String): Step[F, Unit] =
+    FreeT.liftF[Metric[F, ?], F, Unit](DecCounter(name))
 
-  def time[F[_]](data: TimerData): MetricsEval[F, Unit] =
-    MetricsEval.Metric(StopTimer(data))
+  def timer[F[_]: Applicative](name: String): Step[F, TimerData] =
+    FreeT.liftF[Metric[F, ?], F, TimerData](StartTimer(name))
 
-  def mark[F[_]](name: String): MetricsEval[F, Unit] =
-    MetricsEval.Metric(Mark(name))
+  def time[F[_]: Applicative](data: TimerData): Step[F, Unit] =
+    FreeT.liftF[Metric[F, ?], F, Unit](StopTimer(data))
+
+  def mark[F[_]: Applicative](name: String): Step[F, Unit] =
+    FreeT.liftF[Metric[F, ?], F, Unit](Mark(name))
+
+  def run[F[_]: Applicative, A](thunk: Eval[F[A]]): Step[F, A] =
+    FreeT.liftF[Metric[F, ?], F, A](Run(thunk))
+
+  def unit[F[_]: Applicative]: Step[F, Unit] =
+    FreeT.pure(())
 }
 
 case class NoMetrics()
@@ -35,21 +41,21 @@ object NoMetrics
 {
   implicit def Metrics_NoMetrics[F[_]: Applicative]: Metrics[F, NoMetrics] =
     new Metrics[F, NoMetrics] {
-      def run[A](metrics: NoMetrics)(action: MetricAction[F, A]): F[A] =
+      def run[A](metrics: NoMetrics)(action: Metric[F, A]): F[A] =
         interpreter(metrics)(action)
 
-      def interpreter(metrics: NoMetrics): MetricAction[F, ?] ~> F =
+      def interpreter(metrics: NoMetrics): Metric[F, ?] ~> F =
         NoMetrics.interpreter[F]
     }
 
-  def interpreter[F[_]: Applicative]: MetricAction[F, ?] ~> F =
-    new (MetricAction[F, ?] ~> F) {
-      def apply[A](action: MetricAction[F, A]): F[A] = {
+  def interpreter[F[_]: Applicative]: Metric[F, ?] ~> F =
+    new (Metric[F, ?] ~> F) {
+      def apply[A](action: Metric[F, A]): F[A] = {
         val unit = Applicative[F].pure(())
-        type FF[A] = F[A]
+        type M[A] = F[A]
         action match {
           case StartTimer(name) =>
-            Applicative[FF].pure(TimerData(name, 0))
+            Applicative[M].pure(TimerData(name, 0))
           case IncCounter(name) => unit
           case DecCounter(name) => unit
           case StopTimer(data) => unit

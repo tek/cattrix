@@ -19,9 +19,9 @@ extends Specification
   def compose = {
     val steps = for {
       _ <- Metrics.incCounter[IO]("active")
-      r <- MetricsEval.run(Eval.now(run))
+      r <- Metrics.run(Eval.now(run))
     } yield r
-    val result = MetricsEval.io(NoMetrics())(steps).unsafeRunSync
+    val result = steps.foldMap(NoMetrics.interpreter[IO]).unsafeRunSync
     result === 5
   }
 

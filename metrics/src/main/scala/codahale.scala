@@ -16,7 +16,7 @@ sealed trait CodahaleInterpreter[F[_]]
 case class NativeInterpreter[F[_]]()
 extends CodahaleInterpreter[F]
 
-case class CustomInterpreter[F[_]](handler: Codahale[F] => (MetricAction[F, ?] ~> F))
+case class CustomInterpreter[F[_]](handler: Codahale[F] => (Metric[F, ?] ~> F))
 extends CodahaleInterpreter[F]
 
 case class Codahale[F[_]](registry: String, prefix: String, interpreter: CodahaleInterpreter[F])
@@ -76,13 +76,13 @@ trait CodahaleInstances
 {
   implicit def Metrics_CHMetrics[F[_]: Sync]: Metrics[F, Codahale[F]] =
     new Metrics[F, Codahale[F]] {
-      def run[A](resources: Codahale[F])(metric: MetricAction[F, A]): F[A] =
+      def run[A](resources: Codahale[F])(metric: Metric[F, A]): F[A] =
         resources.interpreter match {
           case NativeInterpreter() => NativeInterpreter.compile.apply(metric).run(resources)
           case CustomInterpreter(handler) => handler(resources)(metric)
         }
 
-      def interpreter(resources: Codahale[F]): MetricAction[F, ?] ~> F =
+      def interpreter(resources: Codahale[F]): Metric[F, ?] ~> F =
         resources.interpreter match {
           case NativeInterpreter() => NativeInterpreter.compile[F].andThen(runOp(resources))
           case CustomInterpreter(handler) => handler(resources)
@@ -105,9 +105,9 @@ trait CodahaleFunctions
 
 object NativeInterpreter
 {
-  def compile[F[_]: Sync]: MetricAction[F, ?] ~> CodahaleOp[F, ?] =
-    new (MetricAction[F, ?] ~> CodahaleOp[F, ?]) {
-      def apply[A](action: MetricAction[F, A]): CodahaleOp[F, A] = {
+  def compile[F[_]: Sync]: Metric[F, ?] ~> CodahaleOp[F, ?] =
+    new (Metric[F, ?] ~> CodahaleOp[F, ?]) {
+      def apply[A](action: Metric[F, A]): CodahaleOp[F, A] = {
         type M[X] = F[X]
         action match {
           case IncCounter(name) =>

@@ -41,11 +41,11 @@ extends PlaySpecification
     case a => Action(Results.Ok(payload))
   }
 
-  val metricsLog: ArrayBuffer[MetricAction[Future, _]] = ArrayBuffer()
+  val metricsLog: ArrayBuffer[Metric[Future, _]] = ArrayBuffer()
 
-  def interpreter(resources: Codahale[Future]): MetricAction[Future, ?] ~> Future =
-    new (MetricAction[Future, ?] ~> Future) {
-      def apply[A](action: MetricAction[Future, A]): Future[A] = {
+  def interpreter(resources: Codahale[Future]): Metric[Future, ?] ~> Future =
+    new (Metric[Future, ?] ~> Future) {
+      def apply[A](action: Metric[Future, A]): Future[A] = {
         metricsLog.append(action)
         NoMetrics.interpreter[Future].apply(action)
       }
