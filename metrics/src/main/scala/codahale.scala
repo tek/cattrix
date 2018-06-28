@@ -16,7 +16,7 @@ sealed trait CodahaleInterpreter[F[_]]
 case class NativeInterpreter[F[_]]()
 extends CodahaleInterpreter[F]
 
-case class CustomInterpreter[F[_]](handler: Codahale[F] => (Metric[F, ?] ~> F))
+case class CustomInterpreter[F[_]](handler: MetricTask[Codahale[F]] => (Metric[F, ?] ~> F))
 extends CodahaleInterpreter[F]
 
 case class Codahale[F[_]](registry: String, prefix: String, interpreter: CodahaleInterpreter[F])
@@ -25,23 +25,26 @@ object Codahale
 extends CodahaleInstances
 with CodahaleFunctions
 {
-  type CodahaleOp[F[_], A] = Kleisli[F, Codahale[F], A]
+  type CodahaleOp[F[_], A] = Kleisli[F, MetricTask[Codahale[F]], A]
 }
 
 object CodahaleOp
 {
   type RegistryCons[A] = String => MetricRegistry => A
 
-  def exec[F[_]: Sync, A](op: MetricRegistry => A)(metrics: Codahale[F]): F[A] = {
-    val registry = SharedMetricRegistries.getOrCreate(metrics.registry)
+  def exec[F[_]: Sync, A](op: MetricRegistry => A)(resources: Codahale[F]): F[A] = {
+    val registry = SharedMetricRegistries.getOrCreate(resources.registry)
     Sync[F].delay(op(registry))
   }
 
+  def path[F[_]](task: MetricTask[Codahale[F]]): String =
+    s"${task.resources.prefix}.${task.metric}"
+
   def consMetric[F[_]: Sync, A](cons: RegistryCons[A]): String => CodahaleOp[F, A] =
-    name => Kleisli(metrics => exec(cons(metricName(metrics.prefix, name)))(metrics))
+    name => Kleisli(task => exec(cons(metricName(path(task), name)))(task.resources))
 
   def lift[F[_]: Sync, A](f: MetricRegistry => A): CodahaleOp[F, A] =
-    Kleisli(exec[F, A](f))
+    Kleisli(exec[F, A](f)).local(_.resources)
 
   def delay[F[_]: Sync, A](f: => A): CodahaleOp[F, A] = lift(reg => f)
 
@@ -76,21 +79,15 @@ trait CodahaleInstances
 {
   implicit def Metrics_CHMetrics[F[_]: Sync]: Metrics[F, Codahale[F]] =
     new Metrics[F, Codahale[F]] {
-      def run[A](resources: Codahale[F])(metric: Metric[F, A]): F[A] =
-        resources.interpreter match {
-          case NativeInterpreter() => NativeInterpreter.compile.apply(metric).run(resources)
-          case CustomInterpreter(handler) => handler(resources)(metric)
+      def interpreter(task: MetricTask[Codahale[F]]): Metric[F, ?] ~> F =
+        task.resources.interpreter match {
+          case NativeInterpreter() => NativeInterpreter.compile[F].andThen(runOp(task))
+          case CustomInterpreter(handler) => handler(task)
         }
 
-      def interpreter(resources: Codahale[F]): Metric[F, ?] ~> F =
-        resources.interpreter match {
-          case NativeInterpreter() => NativeInterpreter.compile[F].andThen(runOp(resources))
-          case CustomInterpreter(handler) => handler(resources)
-        }
-
-      def runOp[F[_]](resources: Codahale[F]): CodahaleOp[F, ?] ~> F =
+      def runOp[F[_]](task: MetricTask[Codahale[F]]): CodahaleOp[F, ?] ~> F =
         new (CodahaleOp[F, ?] ~> F) {
-          def apply[A](op: CodahaleOp[F, A]): F[A] = op.run(resources)
+          def apply[A](op: CodahaleOp[F, A]): F[A] = op.run(task)
         }
     }
 }
@@ -126,7 +123,7 @@ object NativeInterpreter
           case Mark(name) =>
             meter[M, A].apply(_.mark())(name)
           case Run(thunk) =>
-            Kleisli.liftF(thunk.value)
+            Kleisli.liftF(thunk())
         }
       }
     }

@@ -20,12 +20,17 @@ import mockws.MockWSHelpers.Action
 
 import FutureInstances._
 
+object Ctrl
+{
+  def metric = "met"
+}
+
 class Ctrl @Inject() (components: ControllerComponents, http: Http[Future])
 (implicit ec: ExecutionContext)
 extends AbstractController(components)
 {
   def act = Action.async {
-    http.get("url", "met").map {
+    http.get("url", Ctrl.metric).map {
       case Right(response) => Ok(response.body)
       case Left(error) => NotFound(error)
     }
@@ -41,12 +46,12 @@ extends PlaySpecification
     case a => Action(Results.Ok(payload))
   }
 
-  val metricsLog: ArrayBuffer[Metric[Future, _]] = ArrayBuffer()
+  val metricsLog: ArrayBuffer[(String, Metric[Future, _])] = ArrayBuffer()
 
-  def interpreter(resources: Codahale[Future]): Metric[Future, ?] ~> Future =
+  def interpreter(resources: MetricTask[Codahale[Future]]): Metric[Future, ?] ~> Future =
     new (Metric[Future, ?] ~> Future) {
       def apply[A](action: Metric[Future, A]): Future[A] = {
-        metricsLog.append(action)
+        metricsLog.append((resources.metric, action))
         NoMetrics.interpreter[Future].apply(action)
       }
     }
@@ -71,14 +76,14 @@ extends PlaySpecification
     val result = ctrl.act()(FakeRequest())
     contentAsString(result).must_==(payload)
       .and(metricsLog.toList.filter {
-        case Run(a) => false
+        case (_, Run(a)) => false
         case _ => true
       }.must_==(List(
-        StartTimer("requestTimer"),
-        IncCounter("activeRequests"),
-        DecCounter("activeRequests"),
-        StopTimer(TimerData("requestTimer", 0)),
-        Mark("200"),
+        (Ctrl.metric, StartTimer("requestTimer")),
+        (Ctrl.metric, IncCounter("activeRequests")),
+        (Ctrl.metric, DecCounter("activeRequests")),
+        (Ctrl.metric, StopTimer(TimerData("requestTimer", 0))),
+        (Ctrl.metric, Mark("200")),
       )))
   }
 

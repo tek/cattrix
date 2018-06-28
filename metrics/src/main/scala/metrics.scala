@@ -1,12 +1,13 @@
 package chm
 
-import cats.{~>, Eval, Applicative}
+import cats.{~>, Applicative, MonadError}
 import cats.free.FreeT
+
+case class MetricTask[A](resources: A, metric: String)
 
 trait Metrics[F[_], A]
 {
-  def run[B](metrics: A)(action: Metric[F, B]): F[B]
-  def interpreter(metrics: A): Metric[F, ?] ~> F
+  def interpreter(task: MetricTask[A]): Metric[F, ?] ~> F
 }
 
 object Metrics
@@ -14,22 +15,25 @@ object Metrics
   type Step[F[_], A] = FreeT[Metric[F, ?], F, A]
 
   def incCounter[F[_]: Applicative](name: String): Step[F, Unit] =
-    FreeT.liftF[Metric[F, ?], F, Unit](IncCounter(name))
+    FreeT.liftF(IncCounter(name))
 
   def decCounter[F[_]: Applicative](name: String): Step[F, Unit] =
-    FreeT.liftF[Metric[F, ?], F, Unit](DecCounter(name))
+    FreeT.liftF(DecCounter(name))
 
   def timer[F[_]: Applicative](name: String): Step[F, TimerData] =
-    FreeT.liftF[Metric[F, ?], F, TimerData](StartTimer(name))
+    FreeT.liftF(StartTimer(name))
 
   def time[F[_]: Applicative](data: TimerData): Step[F, Unit] =
-    FreeT.liftF[Metric[F, ?], F, Unit](StopTimer(data))
+    FreeT.liftF(StopTimer(data))
 
   def mark[F[_]: Applicative](name: String): Step[F, Unit] =
-    FreeT.liftF[Metric[F, ?], F, Unit](Mark(name))
+    FreeT.liftF(Mark(name))
 
-  def run[F[_]: Applicative, A](thunk: Eval[F[A]]): Step[F, A] =
-    FreeT.liftF[Metric[F, ?], F, A](Run(thunk))
+  def run[F[_]: Applicative, A](thunk: () => F[A]): Step[F, A] =
+    FreeT.liftF(Run(thunk))
+
+  def attempt[F[_], A, E](thunk: () => F[A])(implicit ME: MonadError[F, E]): Step[F, Either[E, A]] =
+    run(() => ME.attempt(thunk()))
 
   def unit[F[_]: Applicative]: Step[F, Unit] =
     FreeT.pure(())
@@ -41,10 +45,7 @@ object NoMetrics
 {
   implicit def Metrics_NoMetrics[F[_]: Applicative]: Metrics[F, NoMetrics] =
     new Metrics[F, NoMetrics] {
-      def run[A](metrics: NoMetrics)(action: Metric[F, A]): F[A] =
-        interpreter(metrics)(action)
-
-      def interpreter(metrics: NoMetrics): Metric[F, ?] ~> F =
+      def interpreter(task: MetricTask[NoMetrics]): Metric[F, ?] ~> F =
         NoMetrics.interpreter[F]
     }
 
@@ -60,7 +61,7 @@ object NoMetrics
           case DecCounter(name) => unit
           case StopTimer(data) => unit
           case Mark(name) => unit
-          case Run(thunk) => thunk.value
+          case Run(thunk) => thunk()
         }
       }
     }

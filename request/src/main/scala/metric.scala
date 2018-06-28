@@ -1,12 +1,24 @@
 package chm
 
-sealed trait RequestMetric
+import cats.Applicative
 
-case class StaticRequestMetric(name: String, error: Option[String])
-extends RequestMetric
-
-case class DynamicRequestMetric(
-  name: RequestTask => String,
-  error: Response => Option[String],
+case class RequestMetric[F[_]](
+  name: RequestTask[F] => String,
+  error: Response => Metrics.Step[F, Unit],
 )
-extends RequestMetric
+
+object RequestMetric
+{
+  def strict[F[_]: Applicative](name: String, error: Option[String]): RequestMetric[F] = {
+    val err = error match {
+      case Some(errName) =>
+        Metrics.mark[F](errName)
+      case None =>
+        Metrics.unit
+    }
+    RequestMetric(_ => name, _ => err)
+  }
+
+  def named[F[_]: Applicative](name: String): RequestMetric[F] =
+    strict(name, None)
+}

@@ -1,7 +1,5 @@
 package chm
 
-import cats.Eval
-
 case class TimerData(name: String, start: Long)
 
 sealed trait Metric[F[_], A]
@@ -21,5 +19,7 @@ extends Metric[F, Unit]
 case class Mark[F[_]](name: String)
 extends Metric[F, Unit]
 
-case class Run[F[_], A](thunk: Eval[F[A]])
+case class Run[F[_], A](thunk: () => F[A])
 extends Metric[F, A]
+
+case class MetricTask1[F[_], A](metric: Metric[F, A], path: String)

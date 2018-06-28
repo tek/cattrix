@@ -1,6 +1,5 @@
 package chm
 
-import cats.Eval
 import cats.data.Kleisli
 import cats.syntax.all._
 import cats.effect.IO
@@ -19,7 +18,7 @@ extends Specification
   def compose = {
     val steps = for {
       _ <- Metrics.incCounter[IO]("active")
-      r <- Metrics.run(Eval.now(run))
+      r <- Metrics.run(() => run)
     } yield r
     val result = steps.foldMap(NoMetrics.interpreter[IO]).unsafeRunSync
     result === 5

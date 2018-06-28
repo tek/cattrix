@@ -1,8 +1,10 @@
 package chm
 
-case class RequestTask(
+import cats.Applicative
+
+case class RequestTask[F[_]](
   request: Request,
-  metric: RequestMetric,
+  metric: RequestMetric[F],
   logRequest: Boolean,
   logClientError: Response => Option[LogMessage],
   logServerError: Response => Option[LogMessage],
@@ -11,6 +13,6 @@ case class RequestTask(
 
 object RequestTask
 {
-  def metric(request: Request, metric: String): RequestTask =
-    RequestTask(request, StaticRequestMetric(metric, None), false, a => None, a => None, a => None)
+  def metric[F[_]: Applicative](request: Request, metric: String): RequestTask[F] =
+    RequestTask(request, RequestMetric.strict[F](metric, None), false, a => None, a => None, a => None)
 }
