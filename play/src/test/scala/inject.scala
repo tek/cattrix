@@ -79,10 +79,10 @@ extends PlaySpecification
         case (_, Run(a)) => false
         case _ => true
       }.must_==(List(
-        (Ctrl.metric, StartTimer("requestTimer")),
-        (Ctrl.metric, IncCounter("activeRequests")),
-        (Ctrl.metric, DecCounter("activeRequests")),
-        (Ctrl.metric, StopTimer(TimerData("requestTimer", 0))),
+        (Ctrl.metric, StartTimer("time")),
+        (Ctrl.metric, IncCounter("active")),
+        (Ctrl.metric, DecCounter("active")),
+        (Ctrl.metric, StopTimer(TimerData("time", 0))),
         (Ctrl.metric, Mark("200")),
       )))
   }

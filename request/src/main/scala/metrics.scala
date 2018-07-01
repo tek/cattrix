@@ -32,13 +32,13 @@ object RequestMetrics
   : F[Either[String, Response]] = {
     val name = task.metric.name(task)
     val steps = for {
-      t <- Metrics.timer("requestTimer")
-      _ <- Metrics.incCounter("activeRequests")
+      t <- Metrics.timer("time")
+      _ <- Metrics.incCounter("active")
       response <- Metrics.attempt(request)
-      _ <- Metrics.decCounter("activeRequests")
+      _ <- Metrics.decCounter("active")
       _ <- Metrics.time(t)
       _ <- resultMetrics(task.metric, response)
-      result <- FreeT.liftT(ApplicativeError[F, Throwable].fromEither(response))
+      result <- Metrics.result(response)
     } yield result
     steps.foldMap(metrics.interpreter(MetricTask(resources, name)))
   }

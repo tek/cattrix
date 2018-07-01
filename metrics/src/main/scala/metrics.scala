@@ -1,7 +1,8 @@
 package chm
 
-import cats.{~>, Applicative, MonadError}
+import cats.{~>, Applicative, MonadError, ApplicativeError}
 import cats.free.FreeT
+import cats.effect.Sync
 
 case class MetricTask[A](resources: A, metric: String)
 
@@ -37,6 +38,12 @@ object Metrics
 
   def unit[F[_]: Applicative]: Step[F, Unit] =
     FreeT.pure(())
+
+  def result[F[_], A](ea: Either[Throwable, A])(implicit AE: ApplicativeError[F, Throwable]): Step[F, A] =
+    FreeT.liftT(AE.fromEither(ea))
+
+  def timed[F[_]: Sync, M, A] =
+    MetricsPrograms.simpleTimed[F, M, A] _
 }
 
 case class NoMetrics()
