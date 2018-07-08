@@ -13,7 +13,14 @@ case class Cookie(name: String, value: String)
 @typeclass
 trait HttpRequest[A]
 {
-  def cons(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header]): A
+  def cons(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header])
+  : Either[String, A]
+}
+
+object HttpRequest
+{
+  def fromRequest[A: HttpRequest](request: Request): Either[String, A] =
+    HttpRequest[A].cons(request.method, request.url, request.body, request.auth, request.headers)
 }
 
 case class Request(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header])
@@ -26,8 +33,9 @@ object Request
 
   implicit def HttpRequest_Request: HttpRequest[Request] =
     new HttpRequest[Request] {
-      def cons(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header]): Request =
-        Request(method, url, body, auth, headers)
+      def cons(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header])
+      : Either[String, Request] =
+        Right(Request(method, url, body, auth, headers))
     }
 }
 

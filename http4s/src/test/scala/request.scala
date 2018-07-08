@@ -18,6 +18,7 @@ import org.http4s.server.{Server, AuthMiddleware}
 import org.http4s.server.blaze.BlazeBuilder
 
 import Data._
+import Http4sInstances._
 
 object Util
 {
@@ -79,19 +80,13 @@ object Remote
 
 object Local
 {
-  def http: Http[IO, Request, Response] = Http.fromConfig(HttpConfig(Http4sRequest[IO](), NoMetrics()))
+  def http: Http[IO, HRequest[IO], HResponse[IO]] =
+    Http.fromConfig[IO, Http4sRequest, NoMetrics, HRequest[IO], HResponse[IO]](
+      HttpConfig(Http4sRequest[IO](), NoMetrics())
+    )
 
   def test(port: Int)(creds: Option[Auth]): IO[HResponse[IO]] =
-    for {
-      r1 <- http.request(
-        Request("get", s"http://localhost:$port/resource", None, creds, Nil),
-          "resource",
-          )
-      r2 <- r1 match {
-        case Response(status, data, _, _) =>
-          HResponse[IO](Status(status)).withBody(data)
-      }
-    } yield r2
+    http.request(Request("get", s"http://localhost:$port/resource", None, creds, Nil), "resource")
 
   def routes(port: Int): PartialFunction[HRequest[IO], IO[HResponse[IO]]] = {
     case GET -> Root / "invalid" => test(port)(Some(Auth(invalidUserName, "")))
