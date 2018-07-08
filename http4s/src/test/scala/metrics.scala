@@ -11,19 +11,17 @@ object Service
 {
   def payload = "payload"
 
-  def handler(request: Request): IO[Either[String, Response]] =
-    IO.pure(Right(Response.ok(payload)))
+  def handler(request: Request): IO[Response] =
+    IO.pure(Response.ok(payload))
 
-  def http: Http[IO] = Http.fromConfig(HttpConfig(PureHttp(handler), NoMetrics()))
+  def http: Http[IO, Request, Response] =
+    Http.fromConfig[IO, PureHttp[?[_], Request, Response], NoMetrics, Request, Response](HttpConfig[IO, PureHttp[?[_], Request, Response], NoMetrics](PureHttp(handler), NoMetrics()))
 
   def routes: PartialFunction[HRequest[IO], IO[HResponse[IO]]] = {
     case GET -> Root / "act" =>
       for {
         r1 <- http.get("anything", "act")
-        r2 <- r1 match {
-          case Right(Response(_, data, _, _)) => Ok(data)
-          case Left(_) => InternalServerError("boom")
-        }
+        r2 <- Ok(r1.body)
       } yield r2
   }
 

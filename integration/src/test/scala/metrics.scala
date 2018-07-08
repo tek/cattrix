@@ -29,7 +29,7 @@ extends Specification
     val m = Codahale.as[IO]("io.tryp")
     val sh = PureHttp.partial[IO] { case a => IO.pure(Right(Response.ok(payload))) }
     val http = Http.fromConfig(HttpConfig(sh, m))
-    val io: IO[Either[String, Response]] = http.get("http://tryp.io", "tryp")
+    val io: IO[Out] = http.get("http://tryp.io", "tryp")
     io.unsafeRunSync.must(beRight(Response(200, payload, Nil, Nil)))
   }
 }

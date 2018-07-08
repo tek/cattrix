@@ -14,18 +14,24 @@ import org.log4s.getLogger
 
 case class HttpConfig[F[_], R[_[_]], M](request: R[F], metrics: M)
 
-case class Http[F[_]](
-  request: Request => F[Either[String, Response]],
-  metrics: RequestTask[F] => (() => F[Either[String, Response]]) => F[Either[String, Response]],
+case class Http[F[_], In, Out](
+  request: In => F[Out],
+  metrics: RequestTask[F, In, Out] => (() => F[Out]) => F[Out],
   )
 {
-  def execute(task: RequestTask[F])(implicit S: Sync[F]): F[Either[String, Response]] =
+  def execute(task: RequestTask[F, In, Out])
+  (implicit S: Sync[F], req: HttpRequest[In], res: HttpResponse[Out])
+  : F[Out] =
     Http.execute(this, task)
 
-  def request(request: Request, metric: String)(implicit S: Sync[F]): F[Either[String, Response]] =
-    execute(RequestTask.metric[F](request, metric))
+  def request(request: In, metric: String)
+  (implicit S: Sync[F], req: HttpRequest[In], res: HttpResponse[Out])
+  : F[Out] =
+    execute(RequestTask.metric[F, In, Out](request, metric))
 
-  def get(url: String, metric: String)(implicit S: Sync[F]): F[Either[String, Response]] =
+  def get(url: String, metric: String)
+  (implicit S: Sync[F], req: HttpRequest[In], res: HttpResponse[Out])
+  : F[Out] =
     Http.get(this, url, metric)
 }
 
@@ -33,17 +39,20 @@ object Http
 {
   val log = getLogger("http")
 
-  def fromConfig[F[_]: Sync, R[_[_]], M](conf: HttpConfig[F, R, M])
-  (implicit httpRequest: HttpRequest[F, R], metrics: Metrics[F, M])
-  : Http[F] =
-    Http(httpRequest.execute(conf.request), RequestMetrics.wrapRequest[F, M](conf.metrics)(metrics))
+  def fromConfig[F[_]: Sync, R[_[_]], M, In, Out: HttpResponse](conf: HttpConfig[F, R, M])
+  (implicit httpRequest: HttpIO[F, R, In, Out], metrics: Metrics[F, M])
+  : Http[F, In, Out] =
+    Http(httpRequest.execute(conf.request), RequestMetrics.wrapRequest[F, M, In, Out](conf.metrics)(metrics))
 
-  def execute[F[_]](http: Http[F], task: RequestTask[F])(implicit S: Sync[F]) = {
+  def execute[F[_], In, Out: HttpResponse]
+  (http: Http[F, In, Out], task: RequestTask[F, In, Out])
+  (implicit S: Sync[F])
+  : F[Out] = {
     log.debug(task.toString)
     http.metrics(task)(() => http.request(task.request))
       .map { response =>
         response match {
-          case Right(rs) if (rs.status >= 400) =>
+          case rs if (HttpResponse[Out].status(rs) >= 400) =>
             Http.log.error(s"request failed: $task || response: $rs")
           case _ =>
         }
@@ -51,9 +60,14 @@ object Http
       }
   }
 
-  def simpleTask[F[_]: Applicative](method: String, url: String, metric: String, body: Option[String]): RequestTask[F] =
-    RequestTask.metric[F](Request(method, url, body, None, Nil), metric)
+  def simpleTask[F[_]: Applicative, In: HttpRequest, Out]
+  (method: String, url: String, metric: String, body: Option[String])
+  : RequestTask[F, In, Out] =
+    RequestTask.metric[F, In, Out](HttpRequest[In].cons(method, url, body, None, Nil), metric)
 
-  def get[F[_]](http: Http[F], url: String, metric: String)(implicit S: Sync[F]) =
-    execute(http, simpleTask("get", url, metric, None))
+  def get[F[_], In: HttpRequest, Out: HttpResponse]
+  (http: Http[F, In, Out], url: String, metric: String)
+  (implicit S: Sync[F])
+  : F[Out] =
+    execute(http, simpleTask[F, In, Out]("get", url, metric, None))
 }

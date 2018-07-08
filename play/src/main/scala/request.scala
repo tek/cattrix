@@ -9,9 +9,9 @@ case class WsRequest[F[_]](client: WSClient)
 
 object WsRequest
 {
-  implicit def HttpRequest_WsHttp[F[_]: Sync: LiftIO]: HttpRequest[F, WsRequest] =
-    new HttpRequest[F, WsRequest] {
-      def execute(resources: WsRequest[F])(request: Request): F[Either[String, Response]] =
+  implicit def HttpIO_WsHttp[F[_]: Sync: LiftIO]: HttpIO[F, WsRequest] =
+    new HttpIO[F, WsRequest] {
+      def execute(resources: WsRequest[F])(request: Request): F[Out] =
         WsRequest.execute[F](resources.client)(request)
     }
 
@@ -20,7 +20,7 @@ object WsRequest
   def responseHeaders(rs: WSResponse): List[Header] = rs.headers.toList.map { case (k, v) => Header(k, v.toList) }
 
   def execute[F[_]: LiftIO: Functor](client: WSClient)(request: Request)
-  : F[Either[String, Response]] = {
+  : F[Out] = {
     val req = client.url(request.url)
     val authed = request.auth
       .map(auth => req.withAuth(auth.user, auth.password, WSAuthScheme.BASIC))

@@ -79,7 +79,7 @@ object Remote
 
 object Local
 {
-  def http: Http[IO] = Http.fromConfig(HttpConfig(Http4sRequest[IO](), NoMetrics()))
+  def http: Http[IO, Request, Response] = Http.fromConfig(HttpConfig(Http4sRequest[IO](), NoMetrics()))
 
   def test(port: Int)(creds: Option[Auth]): IO[HResponse[IO]] =
     for {
@@ -88,10 +88,8 @@ object Local
           "resource",
           )
       r2 <- r1 match {
-        case Right(r @ Response(_, data, _, _)) =>
-          HResponse[IO](Status(r.status)).withBody(data)
-        case Left(e) =>
-          InternalServerError("boom")
+        case Response(status, data, _, _) =>
+          HResponse[IO](Status(status)).withBody(data)
       }
     } yield r2
 

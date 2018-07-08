@@ -1,7 +1,9 @@
 package chm
 
+import cats.MonadError
 import cats.data.EitherT
 import cats.syntax.functor._
+import cats.syntax.flatMap._
 import cats.syntax.either._
 import cats.effect.{Effect, Sync}
 import fs2.{Stream, text}
@@ -15,10 +17,13 @@ case class Http4sRequest[F[_]]()
 
 object Http4sRequest
 {
-  implicit def HttpRequest_Http4sRequest[F[_]: Effect]: HttpRequest[F, Http4sRequest] =
-    new HttpRequest[F, Http4sRequest] {
-      def execute(resources: Http4sRequest[F])(request: Request): F[Either[String, Response]] =
-        Http4sRequest.execute[F](request).value
+  implicit def HttpIO_Http4sRequest[F[_]: Effect]: HttpIO[F, Http4sRequest, Request, Response] =
+    new HttpIO[F, Http4sRequest, Request, Response] {
+      def execute(resources: Http4sRequest[F])(request: Request): F[Response] =
+        for {
+          e <- Http4sRequest.execute[F](request).value
+          result <- MonadError[F, Throwable].fromEither(e.leftMap(new Exception(_)))
+        } yield result
     }
 
   def execute[F[_]: Effect](request: Request): EitherT[F, String, Response] = {
@@ -56,13 +61,13 @@ object Http4sRequest
       result <- Stream.eval(client.fetch(request)(transformResponse[F]))
     } yield result
     s.compile.last.map {
-      case Some(a) => a
+      case Some(a) => Right(a)
       case None => Left(s"no stream output in http4s client call for $request")
     }
   }
 
-  def transformResponse[F[_]: Sync](response: HResponse[F]): F[Either[String, Response]] =
+  def transformResponse[F[_]: Sync](response: HResponse[F]): F[Response] =
     for {
       body <- response.as[String]
-    } yield Right(Response(response.status.code, body, Nil, Nil))
+    } yield Response(response.status.code, body, Nil, Nil)
 }
