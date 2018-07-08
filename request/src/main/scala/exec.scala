@@ -22,6 +22,9 @@ case class Http[F[_]](
   def execute(task: RequestTask[F])(implicit S: Sync[F]): F[Either[String, Response]] =
     Http.execute(this, task)
 
+  def request(request: Request, metric: String)(implicit S: Sync[F]): F[Either[String, Response]] =
+    execute(RequestTask.metric[F](request, metric))
+
   def get(url: String, metric: String)(implicit S: Sync[F]): F[Either[String, Response]] =
     Http.get(this, url, metric)
 }
