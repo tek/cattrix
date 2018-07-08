@@ -5,6 +5,9 @@ import cats.data.EitherT
 import cats.syntax.functor._
 import cats.syntax.flatMap._
 import cats.syntax.either._
+import cats.syntax.foldable._
+import cats.instances.option._
+import cats.instances.list._
 import cats.effect.{Effect, Sync}
 import fs2.{Stream, text}
 import org.http4s.{Request => HRequest, Response => HResponse, Method, Uri, ParseResult, EmptyBody, Header => HHeader}
@@ -24,24 +27,6 @@ extends Http4sRequestInstances
     } yield result
   }
 
-  // def transformRequest[F[_]](request: HRequest[F]): ParseResult[HRequest[F]] = {
-  //   val body = request.body match {
-  //     case Some(data) => Stream.emit(data).through(text.utf8Encode)
-  //     case None => EmptyBody
-  //   }
-  //   val auth = request.auth match {
-  //     case Some(a) => List(Authorization(BasicCredentials(a.user, a.password)))
-  //     case None => Nil
-  //   }
-  //   val headers = auth ++ request.headers.collect {
-  //     case Header(name, List(value)) => HHeader.Raw(CaseInsensitiveString(name), value)
-  //   }
-  //   for {
-  //     method <- Method.fromString(request.method.toUpperCase)
-  //     uri <- Uri.fromString(request.url)
-  //   } yield HRequest[F](method = method, uri = uri, body = body, headers = Headers(headers))
-  // }
-
   /**
    * `Http1Client.stream` takes care of resource freeing after the request, so the call to `fetch` has to be done in the
    * same stream
@@ -56,11 +41,6 @@ extends Http4sRequestInstances
       case None => Left(s"no stream output in http4s client call for $request")
     }
   }
-
-  // def transformResponse[F[_]: Sync](response: HResponse[F]): F[HResponse[F]] =
-  //   for {
-  //     body <- response.as[String]
-  //   } yield HResponse(response.status.code, body, Nil, Nil)
 }
 
 trait Http4sRequestInstances
@@ -81,14 +61,8 @@ object Http4sInstances
     new HttpRequest[HRequest[F]] {
       def cons(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header])
       : Either[String, HRequest[F]] = {
-        val b = body match {
-          case Some(data) => Stream.emit(data).through(text.utf8Encode)
-          case None => EmptyBody
-        }
-        val a = auth match {
-          case Some(a) => List(Authorization(BasicCredentials(a.user, a.password)))
-          case None => Nil
-        }
+        val b = body.map(a => Stream.emit(a).through(text.utf8Encode)).combineAll
+        val a = auth.map(a => List(Authorization(BasicCredentials(a.user, a.password)))).combineAll
         val h = a ++ headers.collect {
           case Header(name, List(value)) => HHeader.Raw(CaseInsensitiveString(name), value)
         }

@@ -25,15 +25,12 @@ object Ctrl
   def metric = "met"
 }
 
-class Ctrl @Inject() (components: ControllerComponents, http: Http[Future])
+class Ctrl @Inject() (components: ControllerComponents, http: Http[Future, Request, Response])
 (implicit ec: ExecutionContext)
 extends AbstractController(components)
 {
   def act = Action.async {
-    http.get("url", Ctrl.metric).map {
-      case Right(response) => Ok(response.body)
-      case Left(error) => NotFound(error)
-    }
+    http.get("url", Ctrl.metric).map(response => Ok(response.body))
   }
 }
 

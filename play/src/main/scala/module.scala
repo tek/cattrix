@@ -15,16 +15,16 @@ class FutureHttpModule
 extends AbstractModule
 {
   override def configure(): Unit = {
-    bind(new TypeLiteral[Http[Future]](){}).toProvider(classOf[FutureHttpProvider])
+    bind(new TypeLiteral[Http[Future, Request, Response]](){}).toProvider(classOf[FutureHttpProvider])
     bind(new TypeLiteral[CodahaleInterpreter[Future]](){}).toInstance(NativeInterpreter[Future]())
   }
 }
 
 class FutureHttpProvider @Inject() (ws: WSClient, interpreter: CodahaleInterpreter[Future], config: Configuration)
 (implicit ec: ExecutionContext)
-extends Provider[Http[Future]]
+extends Provider[Http[Future, Request, Response]]
 {
-  def get: Http[Future] = {
+  def get: Http[Future, Request, Response] = {
     val prefix = config.getOptional[String]("http.prefix").getOrElse("service")
     Http.fromConfig(HttpConfig(WsRequest[Future](ws), Codahale.withInterpreter(prefix, interpreter)))
   }
@@ -34,16 +34,16 @@ class IOHttpModule
 extends AbstractModule
 {
   override def configure(): Unit = {
-    bind(new TypeLiteral[Http[IO]](){}).toProvider(classOf[IOHttpProvider])
+    bind(new TypeLiteral[Http[IO, Request, Response]](){}).toProvider(classOf[IOHttpProvider])
     bind(new TypeLiteral[CodahaleInterpreter[IO]](){}).toInstance(NativeInterpreter[IO]())
   }
 }
 
 class IOHttpProvider @Inject() (ws: WSClient, interpreter: CodahaleInterpreter[IO], config: Configuration)
 (implicit ec: ExecutionContext)
-extends Provider[Http[IO]]
+extends Provider[Http[IO, Request, Response]]
 {
-  def get: Http[IO] = {
+  def get: Http[IO, Request, Response] = {
     val prefix = config.getOptional[String]("http.prefix").getOrElse("service")
     Http.fromConfig(HttpConfig(WsRequest[IO](ws), Codahale.withInterpreter(prefix, interpreter)))
   }

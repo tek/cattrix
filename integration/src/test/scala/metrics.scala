@@ -27,9 +27,11 @@ extends Specification
   def http = {
     val payload = "hello"
     val m = Codahale.as[IO]("io.tryp")
-    val sh = PureHttp.partial[IO] { case a => IO.pure(Right(Response.ok(payload))) }
-    val http = Http.fromConfig(HttpConfig(sh, m))
-    val io: IO[Out] = http.get("http://tryp.io", "tryp")
-    io.unsafeRunSync.must(beRight(Response(200, payload, Nil, Nil)))
+    val sh = PureHttp.partial[IO] { case a => IO.pure(Response.ok(payload)) }
+    val http = Http.fromConfig[IO, PureHttp[?[_], Request, Response], Codahale[IO], Request, Response](
+      HttpConfig[IO, PureHttp[?[_], Request, Response], Codahale[IO]](sh, m)
+    )
+    val io: IO[Response] = http.get("http://tryp.io", "tryp")
+    io.unsafeRunSync must_== Response(200, payload, Nil, Nil)
   }
 }

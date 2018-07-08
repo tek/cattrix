@@ -82,4 +82,4 @@ val integration =
 
 val root =
   basicProject(project.in(file(".")))
-    .aggregate(metrics, request, codahale, play, integration)
+    .aggregate(metrics, request, codahale, play, http4s, integration)

@@ -81,9 +81,7 @@ object Remote
 object Local
 {
   def http: Http[IO, HRequest[IO], HResponse[IO]] =
-    Http.fromConfig[IO, Http4sRequest, NoMetrics, HRequest[IO], HResponse[IO]](
-      HttpConfig(Http4sRequest[IO](), NoMetrics())
-    )
+    Http.fromConfig(HttpConfig(Http4sRequest[IO](), NoMetrics()))
 
   def test(port: Int)(creds: Option[Auth]): IO[HResponse[IO]] =
     http.request(Request("get", s"http://localhost:$port/resource", None, creds, Nil), "resource")
