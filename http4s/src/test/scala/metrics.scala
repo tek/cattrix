@@ -14,13 +14,8 @@ object Service
   def handler(request: Request): IO[Response] =
     IO.pure(Response.ok(payload))
 
-  def httpIO: PureHttp[IO, Request, Response] =
-    PureHttp(handler)
-
-  def config = HttpConfig[IO, PureHttp[?[_], Request, Response], NoMetrics](httpIO, NoMetrics())
-
   def http: Http[IO, Request, Response] =
-    Http.fromConfig[IO, PureHttp[?[_], Request, Response], NoMetrics, Request, Response](config)
+    Http.fromConfig(HttpConfig(PureHttp(handler), NoMetrics()))
 
   def routes: PartialFunction[HRequest[IO], IO[HResponse[IO]]] = {
     case GET -> Root / "act" =>

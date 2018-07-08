@@ -5,14 +5,14 @@ import cats.syntax.functor._
 import cats.effect.{IO, LiftIO, Sync}
 import play.api.libs.ws.{WSAuthScheme, WSClient, WSResponse}
 
-case class WsRequest[F[_]](client: WSClient)
+case class WsRequest(client: WSClient)
 
 object WsRequest
 {
   implicit def HttpIO_WsHttp[F[_]: Sync: LiftIO]: HttpIO[F, WsRequest, Request, Response] =
     new HttpIO[F, WsRequest, Request, Response] {
-      def execute(resources: WsRequest[F])(request: Request): F[Response] =
-        WsRequest.execute[F](resources.client)(request)
+      def execute(resources: WsRequest)(request: Request): F[Response] =
+        WsRequest.execute(resources.client)(request)
     }
 
   def responseCookies(rs: WSResponse): List[Cookie] = rs.cookies.map(a => Cookie(a.name, a.value)).toList

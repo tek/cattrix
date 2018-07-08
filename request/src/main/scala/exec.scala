@@ -12,12 +12,12 @@ import cats.free.FreeT
 import com.codahale.metrics.{MetricRegistry, Counter, Meter, Timer, SharedMetricRegistries}
 import org.log4s.getLogger
 
-case class HttpConfig[F[_], R[_[_]], M](request: R[F], metrics: M)
+case class HttpConfig[R, M](request: R, metrics: M)
 
 case class Http[F[_], In, Out](
   exec: In => F[Out],
   metrics: RequestTask[F, In, Out] => (() => F[Out]) => F[Out],
-  )
+)
 {
   def execute(task: RequestTask[F, In, Out])
   (implicit S: Sync[F], req: HttpRequest[In], res: HttpResponse[Out])
@@ -47,10 +47,16 @@ object Http
 {
   val log = getLogger("http")
 
-  def fromConfig[F[_]: Sync, R[_[_]], M, In, Out: HttpResponse](conf: HttpConfig[F, R, M])
-  (implicit httpIO: HttpIO[F, R, In, Out], metrics: Metrics[F, M])
-  : Http[F, In, Out] =
-    Http(httpIO.execute(conf.request), RequestMetrics.wrapRequest[F, M, In, Out](conf.metrics)(metrics))
+  class HttpCons[F[_]]
+  {
+    def apply[R, M, In, Out: HttpResponse]
+    (conf: HttpConfig[R, M])
+    (implicit sync: Sync[F], httpIO: HttpIO[F, R, In, Out], metrics: Metrics[F, M])
+    : Http[F, In, Out] =
+      Http(httpIO.execute(conf.request), RequestMetrics.wrapRequest[F, M, In, Out](conf.metrics)(metrics))
+  }
+
+  def fromConfig[F[_]]: HttpCons[F] = new HttpCons[F]
 
   def execute[F[_], In, Out: HttpResponse]
   (http: Http[F, In, Out], task: RequestTask[F, In, Out])

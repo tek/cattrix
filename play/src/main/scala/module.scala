@@ -26,7 +26,7 @@ extends Provider[Http[Future, Request, Response]]
 {
   def get: Http[Future, Request, Response] = {
     val prefix = config.getOptional[String]("http.prefix").getOrElse("service")
-    Http.fromConfig(HttpConfig(WsRequest[Future](ws), Codahale.withInterpreter(prefix, interpreter)))
+    Http.fromConfig(HttpConfig(WsRequest(ws), Codahale.withInterpreter(prefix, interpreter)))
   }
 }
 
@@ -45,6 +45,6 @@ extends Provider[Http[IO, Request, Response]]
 {
   def get: Http[IO, Request, Response] = {
     val prefix = config.getOptional[String]("http.prefix").getOrElse("service")
-    Http.fromConfig(HttpConfig(WsRequest[IO](ws), Codahale.withInterpreter(prefix, interpreter)))
+    Http.fromConfig(HttpConfig(WsRequest(ws), Codahale.withInterpreter(prefix, interpreter)))
   }
 }

@@ -39,9 +39,9 @@ object Request
     }
 }
 
-trait HttpIO[F[_], R[_[_]], In, Out]
+trait HttpIO[F[_], R, In, Out]
 {
-  def execute(resources: R[F])(request: In): F[Out]
+  def execute(resources: R)(request: In): F[Out]
 }
 
 case class PureHttp[F[_], In, Out](handler: In => F[Out])
@@ -49,8 +49,8 @@ case class PureHttp[F[_], In, Out](handler: In => F[Out])
 object PureHttp
 {
   implicit def HttpIO_PureHttp_default[F[_]: Sync, A]
-  : HttpIO[F, PureHttp[?[_], Request, Response], Request, Response] =
-    new HttpIO[F, PureHttp[?[_], Request, Response], Request, Response] {
+  : HttpIO[F, PureHttp[F, Request, Response], Request, Response] =
+    new HttpIO[F, PureHttp[F, Request, Response], Request, Response] {
       def execute(resources: PureHttp[F, Request, Response])(request: Request): F[Response] =
         resources.handler(request)
     }

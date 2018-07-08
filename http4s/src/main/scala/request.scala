@@ -16,7 +16,7 @@ import org.http4s.headers.Authorization
 import org.http4s.util.CaseInsensitiveString
 import org.http4s.client.blaze.Http1Client
 
-case class Http4sRequest[F[_]]()
+case class Http4sRequest()
 
 object Http4sRequest
 extends Http4sRequestInstances
@@ -47,7 +47,7 @@ trait Http4sRequestInstances
 {
   implicit def HttpIO_Http4sRequest[F[_]: Effect]: HttpIO[F, Http4sRequest, HRequest[F], HResponse[F]] =
     new HttpIO[F, Http4sRequest, HRequest[F], HResponse[F]] {
-      def execute(resources: Http4sRequest[F])(request: HRequest[F]): F[HResponse[F]] =
+      def execute(resources: Http4sRequest)(request: HRequest[F]): F[HResponse[F]] =
         for {
           e <- Http4sRequest.execute[F](request).value
           result <- MonadError[F, Throwable].fromEither(e.leftMap(new Exception(_)))
