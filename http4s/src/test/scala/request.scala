@@ -83,8 +83,13 @@ object Local
   def http: Http[IO, HRequest[IO], HResponse[IO]] =
     Http.fromConfig(HttpConfig(Http4sRequest(), NoMetrics()))
 
-  def test(port: Int)(creds: Option[Auth]): IO[HResponse[IO]] =
-    http.request(Request("get", s"http://localhost:$port/resource", None, creds, Nil), "resource")
+  def test(port: Int)(creds: Option[Auth]): IO[HResponse[IO]] = {
+    val request = Request("get", s"http://localhost:$port/resource", None, creds, Nil)
+    for {
+      nativeRequest <- Fatal.fromEither[IO, HRequest[IO]](HttpRequest.fromRequest[IO, HRequest[IO]](request))
+      response <- http.native.request(nativeRequest, "resource")
+    } yield response
+  }
 
   def routes(port: Int): PartialFunction[HRequest[IO], IO[HResponse[IO]]] = {
     case GET -> Root / "invalid" => test(port)(Some(Auth(invalidUserName, "")))

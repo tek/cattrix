@@ -2,7 +2,6 @@ package chm
 
 import cats.Applicative
 import cats.effect.Sync
-import simulacrum.typeclass
 
 case class Auth(user: String, password: String)
 
@@ -10,17 +9,18 @@ case class Header(name: String, values: List[String])
 
 case class Cookie(name: String, value: String)
 
-@typeclass
-trait HttpRequest[A]
+trait HttpRequest[F[_], A]
 {
   def cons(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header])
   : Either[String, A]
+
+  def toRequest(a: A): F[Request]
 }
 
 object HttpRequest
 {
-  def fromRequest[A: HttpRequest](request: Request): Either[String, A] =
-    HttpRequest[A].cons(request.method, request.url, request.body, request.auth, request.headers)
+  def fromRequest[F[_], A](request: Request)(implicit req: HttpRequest[F, A]): Either[String, A] =
+    req.cons(request.method, request.url, request.body, request.auth, request.headers)
 }
 
 case class Request(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header])
@@ -31,11 +31,13 @@ object Request
 
   def get(url: String): Request = Request("get", url, None, None, Nil)
 
-  implicit def HttpRequest_Request: HttpRequest[Request] =
-    new HttpRequest[Request] {
+  implicit def HttpRequest_Request[F[_]: Applicative]: HttpRequest[F, Request] =
+    new HttpRequest[F, Request] {
       def cons(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header])
       : Either[String, Request] =
         Right(Request(method, url, body, auth, headers))
+
+        def toRequest(a: Request): F[Request] = Applicative[F].pure(a)
     }
 }
 

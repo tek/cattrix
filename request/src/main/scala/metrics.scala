@@ -7,33 +7,37 @@ import cats.syntax.applicativeError._
 import cats.effect.Sync
 import cats.free.FreeT
 
-object RequestMetrics
+object RequestMetricPrograms
 {
-  def responseMetric[F[_]: Sync, In, Out: HttpResponse]
+  def responseMetric[F[_]: Sync, In, Out]
   (metric: RequestMetric[F, In, Out], response: Out)
+  (implicit res: HttpResponse[F, Out])
   : Metrics.Step[F, Unit] = {
     for {
-      _ <- Metrics.mark[F](HttpResponse[Out].status(response).toString)
+      _ <- Metrics.mark[F](res.status(response).toString)
       _ <- metric.error(response)
     } yield ()
   }
 
-  def resultMetrics[F[_]: Sync, In, Out: HttpResponse]
+  def resultMetrics[F[_]: Sync, In, Out]
   (metric: RequestMetric[F, In, Out], result: Either[Throwable, Out])
+  (implicit res: HttpResponse[F, Out])
   : Metrics.Step[F, Unit] =
     result match {
       case Right(r) => responseMetric(metric, r)
       case Left(error) => Metrics.mark[F]("fatal")
     }
 
-  def wrapRequest[F[_]: Sync, M, In, Out: HttpResponse]
-  (resources: M)
-  (metrics: Metrics[F, M])
-  (task: RequestTask[F, In, Out])
-  (request: () => F[Out])
-  : F[Out] = {
-    val name = task.metric.name(task)
-    val steps = for {
+  def simpleTimed[F[_]: Sync, M, In, Out](
+    resources: M,
+    metrics: Metrics[F, M],
+    task: RequestTask[F, In, Out],
+    request: () => F[Out],
+    name: String,
+  )
+  (implicit res: HttpResponse[F, Out])
+  : Metrics.Step[F, Out] = {
+    for {
       t <- Metrics.timer("time")
       _ <- Metrics.incCounter("active")
       response <- Metrics.attempt(request)
@@ -42,6 +46,22 @@ object RequestMetrics
       _ <- resultMetrics(task.metric, response)
       result <- Metrics.result(response)
     } yield result
-    steps.foldMap(metrics.interpreter(MetricTask(resources, name)))
+  }
+}
+
+object RequestMetrics
+{
+  def wrapRequest[F[_]: Sync, M, In, Out]
+  (resources: M)
+  (metrics: Metrics[F, M])
+  (task: RequestTask[F, In, Out])
+  (request: () => F[Out])
+  (implicit res: HttpResponse[F, Out])
+  : F[Out] = {
+    for {
+      name <- task.metric.name(task.request)
+      prog = RequestMetricPrograms.simpleTimed(resources, metrics, task, request, name)
+      result <- prog.foldMap(metrics.interpreter(MetricTask(resources, name)))
+    } yield result
   }
 }

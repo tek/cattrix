@@ -1,6 +1,7 @@
 package chm
 
-import simulacrum.typeclass
+import cats.Applicative
+import cats.effect.Sync
 
 case class Response(status: Int, body: String, headers: List[Header], cookies: List[Cookie])
 
@@ -22,16 +23,19 @@ object Response
     } yield value
 }
 
-@typeclass
-trait HttpResponse[A]
+trait HttpResponse[F[_], A]
 {
   def status(a: A): Int
+
+  def cons(a: A): F[Response]
 }
 
 object HttpResponse
 {
-  implicit def HttpResponse_Response: HttpResponse[Response] =
-    new HttpResponse[Response] {
+  implicit def HttpResponse_Response[F[_]: Applicative]: HttpResponse[F, Response] =
+    new HttpResponse[F, Response] {
       def status(a: Response): Int = a.status
+
+      def cons(a: Response): F[Response] = Applicative[F].pure(a)
     }
 }

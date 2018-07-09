@@ -14,33 +14,76 @@ import org.log4s.getLogger
 
 case class HttpConfig[R, M](request: R, metrics: M)
 
-case class Http[F[_], In, Out](
+case class NativeHttp[F[_], In, Out](
   exec: In => F[Out],
   metrics: RequestTask[F, In, Out] => (() => F[Out]) => F[Out],
 )
 {
-  def execute(task: RequestTask[F, In, Out])
-  (implicit S: Sync[F], req: HttpRequest[In], res: HttpResponse[Out])
-  : F[Out] =
-    Http.execute(this, task)
+  def task(task: RequestTask[F, In, Out])(implicit S: Sync[F], res: HttpResponse[F, Out]): F[Out] =
+    NativeHttp.execute(this, task)
 
-  def request(request: Request, metric: String)
-  (implicit S: Sync[F], req: HttpRequest[In], res: HttpResponse[Out])
+  def request(request: In, metric: String)(implicit S: Sync[F], res: HttpResponse[F, Out]): F[Out] =
+    task(RequestTask.metric[F, In, Out](request, metric))
+
+  def get(url: String, metric: String)(implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
+  : F[Out] =
+    NativeHttp.get(this, url, metric)
+}
+
+object NativeHttp
+{
+  val log = getLogger("http")
+
+  def execute[F[_]: Sync, In, Out]
+  (http: NativeHttp[F, In, Out], task: RequestTask[F, In, Out])
+  (implicit res: HttpResponse[F, Out])
+  : F[Out] = {
+    log.debug(task.toString)
+    http.metrics(task)(() => http.exec(task.request))
+      .map { response =>
+        response match {
+          case rs if (res.status(rs) >= 400) =>
+            Http.log.error(s"request failed: $task || response: $rs")
+          case _ =>
+        }
+        response
+      }
+  }
+
+  def simpleTask[F[_]: Applicative, In, Out]
+  (method: String, url: String, metric: String, body: Option[String])
+  (implicit req: HttpRequest[F, In])
+  : Either[String, RequestTask[F, In, Out]] =
+    for {
+      native <- req.cons(method, url, body, None, Nil)
+    } yield RequestTask.metric[F, In, Out](native, metric)
+
+  def get[F[_], In, Out]
+  (http: NativeHttp[F, In, Out], url: String, metric: String)
+  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
   : F[Out] =
     for {
-      native <- ApplicativeError[F, Throwable].fromEither(HttpRequest.fromRequest(request).leftMap(new Exception(_)))
-      result <- execute(RequestTask.metric[F, In, Out](native, metric))
+      task <- Fatal.fromEither(simpleTask[F, In, Out]("get", url, metric, None))
+      result <- execute(http, task)
     } yield result
+}
 
-  def native(request: In, metric: String)
-  (implicit S: Sync[F], req: HttpRequest[In], res: HttpResponse[Out])
-  : F[Out] =
-    execute(RequestTask.metric[F, In, Out](request, metric))
+case class Http[F[_], In, Out](native: NativeHttp[F, In, Out])
+{
+  def task(task: RequestTask[F, Request, Out])
+  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
+  : F[Response] =
+    Http.native(this, task)
+
+  def request(request: Request, metric: String)
+  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
+  : F[Response] =
+    task(RequestTask.metric[F, Request, Out](request, metric))
 
   def get(url: String, metric: String)
-  (implicit S: Sync[F], req: HttpRequest[In], res: HttpResponse[Out])
-  : F[Out] =
-    Http.get(this, url, metric)
+  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
+  : F[Response] =
+    Http.simple(this, url, metric, "get")
 }
 
 object Http
@@ -49,46 +92,32 @@ object Http
 
   class HttpCons[F[_]]
   {
-    def apply[R, M, In, Out: HttpResponse]
+    def apply[R, M, In, Out]
     (conf: HttpConfig[R, M])
-    (implicit sync: Sync[F], httpIO: HttpIO[F, R, In, Out], metrics: Metrics[F, M])
+    (implicit sync: Sync[F], httpIO: HttpIO[F, R, In, Out], metrics: Metrics[F, M], res: HttpResponse[F, Out])
     : Http[F, In, Out] =
-      Http(httpIO.execute(conf.request), RequestMetrics.wrapRequest[F, M, In, Out](conf.metrics)(metrics))
+      Http(NativeHttp(httpIO.execute(conf.request), RequestMetrics.wrapRequest[F, M, In, Out](conf.metrics)(metrics)))
   }
 
   def fromConfig[F[_]]: HttpCons[F] = new HttpCons[F]
 
-  def execute[F[_], In, Out: HttpResponse]
-  (http: Http[F, In, Out], task: RequestTask[F, In, Out])
-  (implicit S: Sync[F])
-  : F[Out] = {
-    log.debug(task.toString)
-    http.metrics(task)(() => http.exec(task.request))
-      .map { response =>
-        response match {
-          case rs if (HttpResponse[Out].status(rs) >= 400) =>
-            Http.log.error(s"request failed: $task || response: $rs")
-          case _ =>
-        }
-        response
-      }
-  }
-
-  def simpleTask[F[_]: Applicative, In: HttpRequest, Out]
-  (method: String, url: String, metric: String, body: Option[String])
-  : Either[String, RequestTask[F, In, Out]] =
+  def native[F[_]: Sync, In, Out]
+  (http: Http[F, In, Out], task: RequestTask[F, Request, Out])
+  (implicit req: HttpRequest[F, In], res: HttpResponse[F, Out])
+  : F[Response] =
     for {
-      native <- HttpRequest[In].cons(method, url, body, None, Nil)
-    } yield RequestTask.metric[F, In, Out](native, metric)
+      nativeRequest <- Fatal.fromEither(HttpRequest.fromRequest(task.request))
+      nativeTask = RequestTask(nativeRequest, RequestMetric.contramapIn(task.metric)(req.toRequest))
+      nativeResponse <- http.native.task(nativeTask)
+      response <- res.cons(nativeResponse)
+    } yield response
 
-  def get[F[_], In: HttpRequest, Out: HttpResponse]
-  (http: Http[F, In, Out], url: String, metric: String)
-  (implicit S: Sync[F])
-  : F[Out] =
+  def simple[F[_]: Sync, In, Out]
+  (http: Http[F, In, Out], url: String, metric: String, method: String)
+  (implicit req: HttpRequest[F, In], res: HttpResponse[F, Out])
+  : F[Response] =
     for {
-      task <- ApplicativeError[F, Throwable].fromEither(
-        simpleTask[F, In, Out]("get", url, metric, None).leftMap(new Exception(_))
-      )
-      result <- execute(http, task)
+      task <- Fatal.fromEither(NativeHttp.simpleTask[F, Request, Out](metric, url, metric, None))
+      result <- native(http, task)
     } yield result
 }

@@ -1,6 +1,6 @@
 package chm
 
-import cats.{MonadError, Applicative}
+import cats.{ApplicativeError, Applicative}
 import cats.data.EitherT
 import cats.syntax.functor._
 import cats.syntax.flatMap._
@@ -50,15 +50,15 @@ trait Http4sRequestInstances
       def execute(resources: Http4sRequest)(request: HRequest[F]): F[HResponse[F]] =
         for {
           e <- Http4sRequest.execute[F](request).value
-          result <- MonadError[F, Throwable].fromEither(e.leftMap(new Exception(_)))
+          result <- Fatal.fromEither(e)
         } yield result
     }
 }
 
 object Http4sInstances
 {
-  implicit def HttpRequest_HRequest[F[_]]: HttpRequest[HRequest[F]] =
-    new HttpRequest[HRequest[F]] {
+  implicit def HttpRequest_HRequest[F[_]: Sync]: HttpRequest[F, HRequest[F]] =
+    new HttpRequest[F, HRequest[F]] {
       def cons(method: String, url: String, body: Option[String], auth: Option[Auth], headers: List[Header])
       : Either[String, HRequest[F]] = {
         val b = body.map(a => Stream.emit(a).through(text.utf8Encode)).combineAll
@@ -72,11 +72,26 @@ object Http4sInstances
         } yield HRequest[F](method = m, uri = u, body = b, headers = Headers(h))
         e.leftMap(_.toString)
       }
+
+      def toRequest(req: HRequest[F]): F[Request] =
+        for {
+          body <- req.as[String]
+        } yield Request(
+          req.method.renderString,
+          req.uri.renderString,
+          Some(body),
+          None,
+          req.headers.map(a => Header(a.name.value, List(a.value))).toList,
+        )
     }
 
-  implicit def HttpResponse_HResponse[F[_]]: HttpResponse[HResponse[F]] =
-    new HttpResponse[HResponse[F]] {
-      def status(response: HResponse[F])
-      : Int = response.status.code
+  implicit def HttpResponse_HResponse[F[_]: Sync]: HttpResponse[F, HResponse[F]] =
+    new HttpResponse[F, HResponse[F]] {
+      def status(response: HResponse[F]): Int = response.status.code
+
+      def cons(res: HResponse[F]): F[Response] =
+        for {
+          body <- res.as[String]
+        } yield Response(res.status.code, body, Nil, Nil)
     }
 }
