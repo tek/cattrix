@@ -35,7 +35,6 @@ extends AutoPlugin
       basicProject(Project(n, file(n)))
       .settings(
         name := s"$projectName-$n",
-        addCompilerPlugin("org.scalameta" % "paradise" % "3.0.0-M10" cross CrossVersion.full),
         addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.7"),
         publishMavenStyle := true,
         publishTo := Some(
