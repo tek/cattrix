@@ -1,9 +1,5 @@
 import ReleaseTransformations._
 
-name := "cats-http-metrics"
-publishTo := None
-publish := (())
-publishLocal := (())
 releaseCrossBuild := true
 releaseProcess := Seq[ReleaseStep](
   checkSnapshotDependencies,
@@ -78,7 +74,9 @@ val integration =
       publish := (()),
       publishLocal := (()),
     )
+    .settings(noPublish)
 
 val root =
   basicProject(project.in(file(".")))
     .aggregate(metrics, request, codahale, play, http4s, integration)
+    .settings(noPublish)

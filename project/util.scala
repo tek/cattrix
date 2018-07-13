@@ -15,6 +15,8 @@ extends AutoPlugin
     val projectName = "cats-http-metrics"
     val repo = s"$github/$projectName"
 
+    def noPublish: List[Setting[_]] = List(skip in publish := true)
+
     def basicProject(pro: Project): Project =
       pro.settings(
         scalaVersion := "2.12.4",
