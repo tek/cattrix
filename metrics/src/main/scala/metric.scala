@@ -21,5 +21,3 @@ extends Metric[F, Unit]
 
 case class Run[F[_], A](thunk: () => F[A])
 extends Metric[F, A]
-
-case class MetricTask1[F[_], A](metric: Metric[F, A], path: String)

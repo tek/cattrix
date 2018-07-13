@@ -96,7 +96,7 @@ object Http
     (conf: HttpConfig[R, M])
     (implicit sync: Sync[F], httpIO: HttpIO[F, R, In, Out], metrics: Metrics[F, M], res: HttpResponse[F, Out])
     : Http[F, In, Out] =
-      Http(NativeHttp(httpIO.execute(conf.request), RequestMetrics.wrapRequest[F, M, In, Out](conf.metrics)(metrics)))
+      Http(NativeHttp(httpIO.execute(conf.request), RequestMetrics.wrapRequest[F, M, In, Out](conf.metrics)))
   }
 
   def fromConfig[F[_]]: HttpCons[F] = new HttpCons[F]

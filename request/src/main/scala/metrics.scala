@@ -53,15 +53,14 @@ object RequestMetrics
 {
   def wrapRequest[F[_]: Sync, M, In, Out]
   (resources: M)
-  (metrics: Metrics[F, M])
   (task: RequestTask[F, In, Out])
   (request: () => F[Out])
-  (implicit res: HttpResponse[F, Out])
+  (implicit metrics: Metrics[F, M], res: HttpResponse[F, Out])
   : F[Out] = {
     for {
       name <- task.metric.name(task.request)
       prog = RequestMetricPrograms.simpleTimed(resources, metrics, task, request, name)
-      result <- prog.foldMap(metrics.interpreter(MetricTask(resources, name)))
+      result <- Metrics.compile(MetricTask(resources, name))(prog)
     } yield result
   }
 }

@@ -1,6 +1,6 @@
 package chm
 
-import cats.{~>, Applicative, MonadError, ApplicativeError}
+import cats.{~>, Applicative, MonadError, ApplicativeError, Monad}
 import cats.free.FreeT
 import cats.effect.Sync
 
@@ -44,6 +44,9 @@ object Metrics
 
   def timed[F[_]: Sync, M, A] =
     MetricsPrograms.simpleTimed[F, M, A] _
+
+  def compile[F[_]: Monad, M, A](task: MetricTask[M])(prog: Step[F, A])(implicit metrics: Metrics[F, M]): F[A] =
+    prog.foldMap(metrics.interpreter(task))
 }
 
 case class NoMetrics()
