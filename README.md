@@ -5,11 +5,11 @@ A library for generic and abstract interaction with http requests and codahale m
 Module IDs:
 
 ```sbt
-"io.tryp" % "cats-http-metrics-http4s" % "0.1.1"
-"io.tryp" % "cats-http-metrics-play" % "0.1.1"
-"io.tryp" % "cats-http-metrics-metrics" % "0.1.1"
-"io.tryp" % "cats-http-metrics-request" % "0.1.1"
-"io.tryp" % "cats-http-metrics-codahale" % "0.1.1"
+"io.tryp" % "cats-http-metrics-http4s" % "0.1.2"
+"io.tryp" % "cats-http-metrics-play" % "0.1.2"
+"io.tryp" % "cats-http-metrics-metrics" % "0.1.2"
+"io.tryp" % "cats-http-metrics-request" % "0.1.2"
+"io.tryp" % "cats-http-metrics-codahale" % "0.1.2"
 ```
 
 # Metrics
