@@ -16,6 +16,8 @@ import org.http4s.BasicCredentials
 import org.http4s.dsl.io._
 import org.http4s.server.{Server, AuthMiddleware}
 import org.http4s.server.blaze.BlazeBuilder
+import org.http4s.circe._
+import io.circe.syntax._
 
 import Data._
 import Http4sInstances._
@@ -31,20 +33,31 @@ object Util
   }
 }
 
+case class CustomerId(id: Int)
+
+case class Customer(id: CustomerId, name: String)
+
 object Data
 {
-  val payload = "payload"
-  val allowedUser = "user1"
+  def payload = "payload"
+  def allowedUser = "user1"
   def invalidUserName = "user2"
   def invalidUser(name: String): String = s"invalid user $name"
   def missingHeader = "missing auth header"
   def invalidHeader = "invalid auth header"
+  def customer = Customer(CustomerId(5), "Jason")
 }
 
 object Remote
 {
-  def routes: PartialFunction[AuthedRequest[IO, Unit], IO[HResponse[IO]]] = {
+  import io.circe.generic.auto._
+
+  def authRoutes: PartialFunction[AuthedRequest[IO, Unit], IO[HResponse[IO]]] = {
     case GET -> Root / "resource" as _ => Ok(payload)
+  }
+
+  def freeRoutes: PartialFunction[HRequest[IO], IO[HResponse[IO]]] = {
+    case GET -> Root / "json" => Ok(customer.asJson)
   }
 
   val auth: Kleisli[IO, HRequest[IO], Either[String, Unit]] =
@@ -68,23 +81,30 @@ object Remote
 
   def middleware: AuthMiddleware[IO, Unit] = AuthMiddleware(auth, authFailure)
 
-  def service: HttpService[IO] = middleware(AuthedService[Unit, IO](routes))
+  def authService: HttpService[IO] = middleware(AuthedService[Unit, IO](authRoutes))
+
+  def freeService: HttpService[IO] = HttpService[IO](freeRoutes)
 
   def serve(port: Int)(implicit ec: ExecutionContext): IO[Server[IO]] = {
     BlazeBuilder[IO]
       .bindHttp(port, "localhost")
-      .mountService(service, "/")
+      .mountService(authService, "/auth")
+      .mountService(freeService, "/free")
       .start
   }
 }
 
 object Local
 {
+  import io.circe.generic.auto._
+
   def http: Http[IO, HRequest[IO], HResponse[IO]] =
     Http.fromConfig(HttpConfig(Http4sRequest(), NoMetrics()))
 
+  def remote(port: Int) = s"http://localhost:$port"
+
   def test(port: Int)(creds: Option[Auth]): IO[HResponse[IO]] = {
-    val request = Request("get", s"http://localhost:$port/resource", None, creds, Nil)
+    val request = Request("get", s"${remote(port)}/auth/resource", None, creds, Nil)
     for {
       nativeRequest <- Fatal.fromEither[IO, HRequest[IO]](HttpRequest.fromRequest[IO, HRequest[IO]](request))
       response <- http.native.request(nativeRequest, "resource")
@@ -95,6 +115,14 @@ object Local
     case GET -> Root / "invalid" => test(port)(Some(Auth(invalidUserName, "")))
     case GET -> Root / "valid" => test(port)(Some(Auth(allowedUser, "")))
     case GET -> Root / "none" => test(port)(None)
+    case GET -> Root / "json" =>
+      for {
+        customer <- http.getAs[Customer](s"${remote(port)}/free/json", "json")
+        response <- customer match {
+          case JsonResponse.Successful(a) => Ok(a.asJson)
+          case a => InternalServerError(a.toString)
+        }
+      } yield response
   }
 
   def service(port: Int): HttpService[IO] =
@@ -108,6 +136,7 @@ extends Specification
   authed request with valid creds $valid
   authed request with invalid creds $invalid
   authed request without creds $noCreds
+  json request $json
   """
 
   def test(path: String): IO[(Int, String)] = {
@@ -126,4 +155,6 @@ extends Specification
   def invalid = test("invalid").unsafeRunSync must_== (403 -> invalidUser(invalidUserName))
 
   def noCreds = test("none").unsafeRunSync must_== (403 -> missingHeader)
+
+  def json = test("json").unsafeRunSync must_== (200 -> s"""{"id":{"id":5},"name":"Jason"}""")
 }

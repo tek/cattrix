@@ -5,14 +5,12 @@ extends AutoPlugin
 {
   object autoImport
   {
-    val catsVersion = settingKey[String]("cats version")
-
     def testDeps = libraryDependencies ++= List(
       "org.specs2" %% "specs2-core" % "4.1.0" % "test"
     )
 
     val github = "https://github.com/tek"
-    val projectName = "cats-http-metrics"
+    val projectName = "cattrix"
     val repo = s"$github/$projectName"
 
     def noPublish: List[Setting[_]] = List(skip in publish := true)

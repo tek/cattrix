@@ -14,6 +14,9 @@ releaseProcess := Seq[ReleaseStep](
   commitNextVersion
 )
 
+val circeVersion = "0.10.0-M1"
+val http4sVersion = "0.18.4"
+
 val metrics =
   pro("metrics")
     .settings(
@@ -38,6 +41,11 @@ val codahale =
 val request =
   pro("request")
     .dependsOn(metrics)
+    .settings(
+      libraryDependencies ++= List(
+        "io.circe" %% "circe-parser" % circeVersion,
+      )
+    )
 
 val play =
   pro("play")
@@ -52,8 +60,6 @@ val play =
       )
     )
 
-val http4sVersion = "0.18.4"
-
 val http4s =
   pro("http4s")
     .dependsOn(request, codahale)
@@ -63,6 +69,8 @@ val http4s =
         "org.http4s" %% "http4s-blaze-client" % http4sVersion,
         "org.http4s" %% "http4s-dsl" % http4sVersion % "test",
         "org.http4s" %% "http4s-blaze-server" % http4sVersion % "test",
+        "org.http4s" %% "http4s-circe" % http4sVersion % "test",
+        "io.circe" %% "circe-generic" % circeVersion,
       )
     )
 

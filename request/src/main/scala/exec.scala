@@ -3,7 +3,7 @@ package chm
 import scala.util.{Success, Failure}
 import scala.concurrent.Future
 
-import cats.{Monad, ApplicativeError, Applicative}
+import cats.{Monad, ApplicativeError, Applicative, MonadError}
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import cats.syntax.either._
@@ -11,8 +11,32 @@ import cats.effect.Sync
 import cats.free.FreeT
 import com.codahale.metrics.{MetricRegistry, Counter, Meter, Timer, SharedMetricRegistries}
 import org.log4s.getLogger
+import io.circe.Decoder
+import io.circe.parser.decode
 
 case class HttpConfig[R, M](request: R, metrics: M)
+
+sealed trait JsonResponse[A]
+
+object JsonResponse
+{
+  case class Unsuccessful[A](status: Int, body: String)
+  extends JsonResponse[A]
+
+  case class ParseError[A](error: String, body: String)
+  extends JsonResponse[A]
+
+  case class Successful[A](data: A)
+  extends JsonResponse[A]
+
+  def fromResponse[A: Decoder](response: Response): JsonResponse[A] = 
+    if (response.status < 300)
+      decode[A](response.body) match {
+        case Right(a) => Successful(a)
+        case Left(a) => ParseError(a.getMessage, response.body)
+      }
+    else Unsuccessful(response.status, response.body)
+}
 
 case class NativeHttp[F[_], In, Out](
   exec: In => F[Out],
@@ -22,12 +46,22 @@ case class NativeHttp[F[_], In, Out](
   def task(task: RequestTask[F, In, Out])(implicit S: Sync[F], res: HttpResponse[F, Out]): F[Out] =
     NativeHttp.execute(this, task)
 
-  def request(request: In, metric: String)(implicit S: Sync[F], res: HttpResponse[F, Out]): F[Out] =
-    task(RequestTask.metric[F, In, Out](request, metric))
+  def taskAs[A: Decoder](task: RequestTask[F, In, Out])(implicit S: Sync[F], res: HttpResponse[F, Out]): F[JsonResponse[A]] =
+    NativeHttp.as[A, F, Out](NativeHttp.execute(this, task))
+
+  def request(in: In, metric: String)(implicit S: Sync[F], res: HttpResponse[F, Out]): F[Out] =
+    task(RequestTask.metric[F, In, Out](in, metric))
+
+  def as[A: Decoder](in: In, metric: String)(implicit S: Sync[F], res: HttpResponse[F, Out]): F[JsonResponse[A]] =
+    NativeHttp.as[A, F, Out](request(in, metric))
 
   def get(url: String, metric: String)(implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
   : F[Out] =
     NativeHttp.get(this, url, metric)
+
+  def getAs[A: Decoder](url: String, metric: String)
+  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out]): F[JsonResponse[A]] =
+    NativeHttp.as[A, F, Out](NativeHttp.get(this, url, metric))
 }
 
 object NativeHttp
@@ -66,6 +100,12 @@ object NativeHttp
       task <- Fatal.fromEither(simpleTask[F, In, Out]("get", url, metric, None))
       result <- execute(http, task)
     } yield result
+
+  def as[A: Decoder, F[_], Out](fo: F[Out])(implicit M: MonadError[F, Throwable], res: HttpResponse[F, Out]): F[JsonResponse[A]] =
+    for {
+      out <- fo
+      data <- Http.as[A, F](res.cons(out))
+    } yield data
 }
 
 case class Http[F[_], In, Out](native: NativeHttp[F, In, Out])
@@ -80,10 +120,20 @@ case class Http[F[_], In, Out](native: NativeHttp[F, In, Out])
   : F[Response] =
     task(RequestTask.metric[F, Request, Out](request, metric))
 
+  def as[A: Decoder](request: Request, metric: String)
+  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
+  : F[JsonResponse[A]] =
+    Http.as[A, F](this.request(request, metric))
+
   def get(url: String, metric: String)
   (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
   : F[Response] =
     Http.simple(this, url, metric, "get")
+
+  def getAs[A: Decoder](url: String, metric: String)
+  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
+  : F[JsonResponse[A]] =
+    Http.as[A, F](Http.simple(this, url, metric, "get"))
 }
 
 object Http
@@ -117,7 +167,10 @@ object Http
   (implicit req: HttpRequest[F, In], res: HttpResponse[F, Out])
   : F[Response] =
     for {
-      task <- Fatal.fromEither(NativeHttp.simpleTask[F, Request, Out](metric, url, metric, None))
+      task <- Fatal.fromEither(NativeHttp.simpleTask[F, Request, Out](method, url, metric, None))
       result <- native(http, task)
     } yield result
+
+  def as[A: Decoder, F[_]](fr: F[Response])(implicit M: MonadError[F, Throwable]): F[JsonResponse[A]] =
+    fr.map(JsonResponse.fromResponse[A])
 }
