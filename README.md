@@ -5,11 +5,11 @@ A library for generic and abstract interaction with http requests and codahale m
 Module IDs:
 
 ```sbt
-"io.tryp" % "cattrix-http4s" % "0.1.4"
-"io.tryp" % "cattrix-play" % "0.1.4"
-"io.tryp" % "cattrix-metrics" % "0.1.4"
-"io.tryp" % "cattrix-request" % "0.1.4"
-"io.tryp" % "cattrix-codahale" % "0.1.4"
+"io.tryp" % "cattrix-http4s" % "0.1.5"
+"io.tryp" % "cattrix-play" % "0.1.5"
+"io.tryp" % "cattrix-metrics" % "0.1.5"
+"io.tryp" % "cattrix-request" % "0.1.5"
+"io.tryp" % "cattrix-codahale" % "0.1.5"
 ```
 
 # Metrics

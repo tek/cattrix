@@ -9,7 +9,6 @@ import cats.syntax.functor._
 import cats.syntax.either._
 import cats.effect.Sync
 import cats.free.FreeT
-import com.codahale.metrics.{MetricRegistry, Counter, Meter, Timer, SharedMetricRegistries}
 import org.log4s.getLogger
 import io.circe.Decoder
 import io.circe.parser.decode
