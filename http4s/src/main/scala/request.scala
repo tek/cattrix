@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import cats.{ApplicativeError, Applicative}
 import cats.data.EitherT

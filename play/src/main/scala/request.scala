@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import cats.Functor
 import cats.syntax.functor._

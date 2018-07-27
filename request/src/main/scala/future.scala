@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import scala.concurrent.{Future, ExecutionContext}
 

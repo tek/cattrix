@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import cats.syntax.either._
 

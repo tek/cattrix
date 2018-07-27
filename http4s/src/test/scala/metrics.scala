@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import cats.syntax.all._
 import cats.effect.IO

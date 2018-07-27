@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import cats.{~>, Applicative, MonadError, ApplicativeError, Monad}
 import cats.free.FreeT

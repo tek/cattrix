@@ -1,15 +1,15 @@
-# Cats Http Metrics
+# Cattrix - http and metrics with cats
 
 A library for generic and abstract interaction with http requests and codahale metrics
 
 Module IDs:
 
 ```sbt
-"io.tryp" % "cats-http-metrics-http4s" % "0.1.2"
-"io.tryp" % "cats-http-metrics-play" % "0.1.2"
-"io.tryp" % "cats-http-metrics-metrics" % "0.1.2"
-"io.tryp" % "cats-http-metrics-request" % "0.1.2"
-"io.tryp" % "cats-http-metrics-codahale" % "0.1.2"
+"io.tryp" % "cattrix-http4s" % "0.1.4"
+"io.tryp" % "cattrix-play" % "0.1.4"
+"io.tryp" % "cattrix-metrics" % "0.1.4"
+"io.tryp" % "cattrix-request" % "0.1.4"
+"io.tryp" % "cattrix-codahale" % "0.1.4"
 ```
 
 # Metrics
@@ -19,16 +19,19 @@ This module provides a DSL for monadically sequencing metrics around arbitrary c
 Take this example:
 
 ```scala
-import chm.Metrics
+import cattrix.Metrics
+import dbframework.DatabaseQuery
+
+def databaseQuery: IO[DatabaseQuery] = ???
 
 val prog: Metrics.Step[IO, DatabaseQuery] = for {
   t <- Metrics.timer("time")
   _ <- Metrics.incCounter("active")
-  result <- Metrics.run(() => database.query("12345"))
+  query <- Metrics.run(() => database.query("12345"))
   _ <- Metrics.decCounter("active")
   _ <- Metrics.time(t)
   _ <- Metrics.mark("success")
-} yield result
+} yield query
 ```
 
 This defines a program made out of `cats.free.FreeT`, where `Metrics.run` takes an arbitrary `F[_]: cats.effect.Sync`.
@@ -63,7 +66,7 @@ variants as well, if available.
 An example request looks like this:
 
 ```scala
-import chm.{Http, HttpConfig, Http4sRequest, Request, RequestTask, Response, Codahale, RequestMetric}
+import cattrix.{Http, HttpConfig, Http4sRequest, Request, RequestTask, Response, Codahale, RequestMetric}
 
 def http: Http[IO, http4s.Request[IO], http4s.Response[IO]] =
   Http.fromConfig(HttpConfig(Http4sRequest(), Codahale.as[IO]("my.service")))
@@ -84,6 +87,23 @@ val response: IO[http4s.Response[IO]] = http.native.get("http://localhost/item/1
 ```
 
 This also showcases one of the convenience methods that both interfaces offer.
+
+## JSON
+
+`Http` provides methods for direct json decoding using implicit `io.circe.Decoder` instances:
+
+```scala
+import cattrix.JsonResponse
+import io.circe.generic.auto._
+
+case class Payload(data: String)
+
+val io: IO[String] = http.getAs[Payload](url, metric).map {
+  case JsonResponse.Successful(Payload(data)) => data
+  case JsonResponse.Unsuccessful(status, body) => s"request failed with status $status: $body"
+  case JsonResponse.DecodingError(error, body) => s"couldn't decode body: $error ($body)"
+}
+```
 
 ## Framework Support
 

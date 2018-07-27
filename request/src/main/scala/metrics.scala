@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import cats.ApplicativeError
 import cats.syntax.flatMap._

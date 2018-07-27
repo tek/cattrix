@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import cats.data.Kleisli
 import cats.syntax.all._

@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 sealed trait LogLevel
 

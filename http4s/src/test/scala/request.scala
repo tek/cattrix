@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import java.net.ServerSocket
 import scala.concurrent.ExecutionContext

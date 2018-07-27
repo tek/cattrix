@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 case class TimerData(name: String, start: Long)
 

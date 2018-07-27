@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import javax.inject.{Inject, Singleton, Provider}
 

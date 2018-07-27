@@ -1,4 +1,4 @@
-package chm
+package cattrix
 
 import scala.util.{Success, Failure}
 import scala.concurrent.Future
@@ -23,17 +23,17 @@ object JsonResponse
   case class Unsuccessful[A](status: Int, body: String)
   extends JsonResponse[A]
 
-  case class ParseError[A](error: String, body: String)
+  case class DecodingError[A](error: String, body: String)
   extends JsonResponse[A]
 
   case class Successful[A](data: A)
   extends JsonResponse[A]
 
-  def fromResponse[A: Decoder](response: Response): JsonResponse[A] = 
+  def fromResponse[A: Decoder](response: Response): JsonResponse[A] =
     if (response.status < 300)
       decode[A](response.body) match {
         case Right(a) => Successful(a)
-        case Left(a) => ParseError(a.getMessage, response.body)
+        case Left(a) => DecodingError(a.getMessage, response.body)
       }
     else Unsuccessful(response.status, response.body)
 }
