@@ -8,7 +8,7 @@ import cats.syntax.either._
 import cats.syntax.foldable._
 import cats.instances.option._
 import cats.instances.list._
-import cats.effect.{Effect, Sync}
+import cats.effect.{Effect, Sync, ConcurrentEffect}
 import fs2.{Stream, text}
 import org.http4s.{Request => HRequest, Response => HResponse, Method, Uri, ParseResult, EmptyBody, Header => HHeader}
 import org.http4s.{Headers, BasicCredentials}
@@ -21,7 +21,7 @@ case class Http4sRequest()
 object Http4sRequest
 extends Http4sRequestInstances
 {
-  def execute[F[_]: Effect](request: HRequest[F]): EitherT[F, String, HResponse[F]] = {
+  def execute[F[_]: ConcurrentEffect](request: HRequest[F]): EitherT[F, String, HResponse[F]] = {
     for {
       result <- EitherT(makeRequest[F](request))
     } yield result
@@ -31,7 +31,7 @@ extends Http4sRequestInstances
    * `Http1Client.stream` takes care of resource freeing after the request, so the call to `fetch` has to be done in the
    * same stream
    */
-  def makeRequest[F[_]: Effect](request: HRequest[F]): F[Either[String, HResponse[F]]] = {
+  def makeRequest[F[_]: ConcurrentEffect](request: HRequest[F]): F[Either[String, HResponse[F]]] = {
     val s = for {
       client <- Http1Client.stream[F]()
       result <- Stream.eval(client.fetch(request)(Applicative[F].pure))
@@ -45,7 +45,7 @@ extends Http4sRequestInstances
 
 trait Http4sRequestInstances
 {
-  implicit def HttpIO_Http4sRequest[F[_]: Effect]: HttpIO[F, Http4sRequest, HRequest[F], HResponse[F]] =
+  implicit def HttpIO_Http4sRequest[F[_]: ConcurrentEffect]: HttpIO[F, Http4sRequest, HRequest[F], HResponse[F]] =
     new HttpIO[F, Http4sRequest, HRequest[F], HResponse[F]] {
       def execute(resources: Http4sRequest)(request: HRequest[F]): F[HResponse[F]] =
         for {

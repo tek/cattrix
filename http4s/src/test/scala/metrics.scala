@@ -4,7 +4,7 @@ import cats.syntax.all._
 import cats.effect.IO
 import org.specs2.Specification
 import fs2.{Stream, text}
-import org.http4s.{Request => HRequest, Response => HResponse, HttpService, Method, Uri}
+import org.http4s.{Request => HRequest, Response => HResponse, HttpRoutes, Method, Uri}
 import org.http4s.dsl.io._
 
 object Service
@@ -25,8 +25,8 @@ object Service
       } yield r2
   }
 
-  def service: HttpService[IO] =
-    HttpService[IO](routes)
+  def service: HttpRoutes[IO] =
+    HttpRoutes.of[IO](routes)
 }
 
 class MetricsSpec

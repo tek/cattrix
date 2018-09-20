@@ -6,9 +6,10 @@ import scala.concurrent.ExecutionContext
 import cats.Id
 import cats.data.{Kleisli, OptionT}
 import cats.syntax.all._
-import cats.effect.IO
+import cats.effect.{IO, ContextShift}
+import cats.effect.internals.IOContextShift
 import org.specs2.Specification
-import fs2.{Stream, text, StreamApp}
+import fs2.{Stream, text}
 import org.http4s.{Request => HRequest, Response => HResponse, HttpService, Method, Uri, AuthedService, AuthedRequest}
 import org.http4s.Status
 import org.http4s.headers.Authorization
@@ -65,9 +66,9 @@ object Remote
       val result = for {
         authHeader <- request.headers.get(Authorization).toRight(missingHeader)
         _ <- authHeader match {
-          case Authorization(BasicCredentials(creds)) =>
-            if (creds.username == allowedUser) Right(())
-            else Left(invalidUser(creds.username))
+          case Authorization(BasicCredentials(username, _)) =>
+            if (username == allowedUser) Right(())
+            else Left(invalidUser(username))
           case _ => Left(invalidHeader)
         }
       } yield ()
@@ -85,7 +86,7 @@ object Remote
 
   def freeService: HttpService[IO] = HttpService[IO](freeRoutes)
 
-  def serve(port: Int)(implicit ec: ExecutionContext): IO[Server[IO]] = {
+  def serve(port: Int)(implicit ec: ExecutionContext, cs: ContextShift[IO]): IO[Server[IO]] = {
     BlazeBuilder[IO]
       .bindHttp(port, "localhost")
       .mountService(authService, "/auth")
@@ -98,12 +99,12 @@ object Local
 {
   import io.circe.generic.auto._
 
-  def http: Http[IO, HRequest[IO], HResponse[IO]] =
-    Http.fromConfig(HttpConfig(Http4sRequest(), NoMetrics()))
+  def http(implicit cs: ContextShift[IO]): Http[IO, HRequest[IO], HResponse[IO]] =
+    Http.fromConfig[IO](HttpConfig(Http4sRequest(), NoMetrics()))
 
   def remote(port: Int) = s"http://localhost:$port"
 
-  def test(port: Int)(creds: Option[Auth]): IO[HResponse[IO]] = {
+  def test(port: Int)(creds: Option[Auth])(implicit cs: ContextShift[IO]): IO[HResponse[IO]] = {
     val request = Request("get", s"${remote(port)}/auth/resource", None, creds, Nil)
     for {
       nativeRequest <- Fatal.fromEither[IO, HRequest[IO]](HttpRequest.fromRequest[IO, HRequest[IO]](request))
@@ -111,7 +112,7 @@ object Local
     } yield response
   }
 
-  def routes(port: Int): PartialFunction[HRequest[IO], IO[HResponse[IO]]] = {
+  def routes(port: Int)(implicit cs: ContextShift[IO]): PartialFunction[HRequest[IO], IO[HResponse[IO]]] = {
     case GET -> Root / "invalid" => test(port)(Some(Auth(invalidUserName, "")))
     case GET -> Root / "valid" => test(port)(Some(Auth(allowedUser, "")))
     case GET -> Root / "none" => test(port)(None)
@@ -125,7 +126,7 @@ object Local
       } yield response
   }
 
-  def service(port: Int): HttpService[IO] =
+  def service(port: Int)(implicit cs: ContextShift[IO]): HttpService[IO] =
     HttpService[IO](routes(port))
 }
 
@@ -138,6 +139,9 @@ extends Specification
   authed request without creds $noCreds
   json request $json
   """
+
+  implicit val contextShift: ContextShift[IO] =
+    IOContextShift(ec)
 
   def test(path: String): IO[(Int, String)] = {
     val port = Util.freePort()
