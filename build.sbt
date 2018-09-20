@@ -24,7 +24,7 @@ val metrics =
         "org.log4s" %% "log4s" % "1.6.1",
         "org.typelevel" %% "cats-core" % "1.1.0",
         "org.typelevel" %% "cats-free" % "1.1.0",
-        "org.typelevel" %% "cats-effect" % "1.0.0-RC2",
+        "org.typelevel" %% "cats-effect" % "1.0.0",
       )
     )
 
