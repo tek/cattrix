@@ -67,6 +67,7 @@ An example request looks like this:
 
 ```scala
 import cattrix.{Http, HttpConfig, Http4sRequest, Request, RequestTask, Response, Codahale, RequestMetric}
+import cattrix.Http4sInstances._
 
 def http: Http[IO, http4s.Request[IO], http4s.Response[IO]] =
   Http.fromConfig(HttpConfig(Http4sRequest(), Codahale.as[IO]("my.service")))
