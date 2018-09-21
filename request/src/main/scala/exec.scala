@@ -41,25 +41,25 @@ case class NativeHttp[F[_], In, Out](
   exec: In => F[Out],
   metrics: RequestTask[F, In, Out] => (() => F[Out]) => F[Out],
 )
+(implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
 {
-  def task(task: RequestTask[F, In, Out])(implicit S: Sync[F], res: HttpResponse[F, Out]): F[Out] =
+  def task(task: RequestTask[F, In, Out]): F[Out] =
     NativeHttp.execute(this, task)
 
-  def taskAs[A: Decoder](task: RequestTask[F, In, Out])(implicit S: Sync[F], res: HttpResponse[F, Out]): F[JsonResponse[A]] =
+  def taskAs[A: Decoder](task: RequestTask[F, In, Out]): F[JsonResponse[A]] =
     NativeHttp.as[A, F, Out](NativeHttp.execute(this, task))
 
-  def request(in: In, metric: String)(implicit S: Sync[F], res: HttpResponse[F, Out]): F[Out] =
+  def request(in: In, metric: String): F[Out] =
     task(RequestTask.metric[F, In, Out](in, metric))
 
-  def as[A: Decoder](in: In, metric: String)(implicit S: Sync[F], res: HttpResponse[F, Out]): F[JsonResponse[A]] =
+  def as[A: Decoder](in: In, metric: String): F[JsonResponse[A]] =
     NativeHttp.as[A, F, Out](request(in, metric))
 
-  def get(url: String, metric: String)(implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
+  def get(url: String, metric: String)
   : F[Out] =
     NativeHttp.get(this, url, metric)
 
-  def getAs[A: Decoder](url: String, metric: String)
-  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out]): F[JsonResponse[A]] =
+  def getAs[A: Decoder](url: String, metric: String): F[JsonResponse[A]] =
     NativeHttp.as[A, F, Out](NativeHttp.get(this, url, metric))
 }
 
@@ -108,29 +108,25 @@ object NativeHttp
 }
 
 case class Http[F[_], In, Out](native: NativeHttp[F, In, Out])
+(implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
 {
   def task(task: RequestTask[F, Request, Out])
-  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
   : F[Response] =
     Http.native(this, task)
 
   def request(request: Request, metric: String)
-  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
   : F[Response] =
     task(RequestTask.metric[F, Request, Out](request, metric))
 
   def as[A: Decoder](request: Request, metric: String)
-  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
   : F[JsonResponse[A]] =
     Http.as[A, F](this.request(request, metric))
 
   def get(url: String, metric: String)
-  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
   : F[Response] =
     Http.simple(this, url, metric, "get")
 
   def getAs[A: Decoder](url: String, metric: String)
-  (implicit S: Sync[F], req: HttpRequest[F, In], res: HttpResponse[F, Out])
   : F[JsonResponse[A]] =
     Http.as[A, F](Http.simple(this, url, metric, "get"))
 }
@@ -143,7 +139,13 @@ object Http
   {
     def apply[R, M, In, Out]
     (conf: HttpConfig[R, M])
-    (implicit sync: Sync[F], httpIO: HttpIO[F, R, In, Out], metrics: Metrics[F, M], res: HttpResponse[F, Out])
+    (implicit
+      sync: Sync[F],
+      httpIO: HttpIO[F, R, In, Out],
+      metrics: Metrics[F, M],
+      req: HttpRequest[F, In],
+      res: HttpResponse[F, Out],
+    )
     : Http[F, In, Out] =
       Http(NativeHttp(httpIO.execute(conf.request), RequestMetrics.wrapRequest[F, M, In, Out](conf.metrics)))
   }
