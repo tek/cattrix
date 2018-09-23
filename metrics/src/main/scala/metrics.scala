@@ -67,10 +67,10 @@ object NoMetrics
         action match {
           case StartTimer(name) =>
             Applicative[M].pure(TimerData(name, 0))
-          case IncCounter(name) => unit
-          case DecCounter(name) => unit
-          case StopTimer(data) => unit
-          case Mark(name) => unit
+          case IncCounter(_) => unit
+          case DecCounter(_) => unit
+          case StopTimer(_) => unit
+          case Mark(_) => unit
           case Run(thunk) => thunk()
         }
       }

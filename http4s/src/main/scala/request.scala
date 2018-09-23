@@ -1,57 +1,50 @@
 package cattrix
 
-import cats.{ApplicativeError, Applicative}
-import cats.data.EitherT
+import scala.concurrent.ExecutionContext
+
+import cats.Applicative
 import cats.syntax.functor._
-import cats.syntax.flatMap._
 import cats.syntax.either._
 import cats.syntax.foldable._
 import cats.instances.option._
 import cats.instances.list._
-import cats.effect.{Effect, Sync, ConcurrentEffect}
+import cats.effect.{Sync, ConcurrentEffect}
 import fs2.{Stream, text}
-import org.http4s.{Request => HRequest, Response => HResponse, Method, Uri, ParseResult, EmptyBody, Header => HHeader}
+import org.http4s.{Request => HRequest, Response => HResponse, Method, Uri, Header => HHeader}
 import org.http4s.{Headers, BasicCredentials}
 import org.http4s.headers.Authorization
 import org.http4s.util.CaseInsensitiveString
-import org.http4s.client.blaze.Http1Client
+import org.http4s.client.Client
+import org.http4s.client.blaze.BlazeClientBuilder
 
-case class Http4sRequest()
+case class Http4sRequest[F[_]](client: Client[F])
 
 object Http4sRequest
 extends Http4sRequestInstances
 {
-  def execute[F[_]: ConcurrentEffect](request: HRequest[F]): EitherT[F, String, HResponse[F]] = {
-    for {
-      result <- EitherT(makeRequest[F](request))
-    } yield result
+  def withClient[F[_]: ConcurrentEffect, M, A]
+  (metrics: M)
+  (thunk: Http[F, HRequest[F], HResponse[F]] => F[A])
+  (client: Client[F])
+  (implicit mt: Metrics[F, M])
+  : F[A] = {
+    import Http4sInstances._
+    thunk(Http.fromConfig[F](HttpConfig(Http4sRequest(client), metrics)))
   }
 
-  /**
-   * `Http1Client.stream` takes care of resource freeing after the request, so the call to `fetch` has to be done in the
-   * same stream
-   */
-  def makeRequest[F[_]: ConcurrentEffect](request: HRequest[F]): F[Either[String, HResponse[F]]] = {
-    val s = for {
-      client <- Http1Client.stream[F]()
-      result <- Stream.eval(client.fetch(request)(Applicative[F].pure))
-    } yield result
-    s.compile.last.map {
-      case Some(a) => Right(a)
-      case None => Left(s"no stream output in http4s client call for $request")
-    }
-  }
+  def bracket[F[_]: ConcurrentEffect, M, A](metrics: M)
+  (thunk: Http[F, HRequest[F], HResponse[F]] => F[A])
+  (implicit mt: Metrics[F, M], ec: ExecutionContext)
+  : F[A] =
+    BlazeClientBuilder(ec).resource.use(withClient(metrics)(thunk))
 }
 
 trait Http4sRequestInstances
 {
-  implicit def HttpIO_Http4sRequest[F[_]: ConcurrentEffect]: HttpIO[F, Http4sRequest, HRequest[F], HResponse[F]] =
-    new HttpIO[F, Http4sRequest, HRequest[F], HResponse[F]] {
-      def execute(resources: Http4sRequest)(request: HRequest[F]): F[HResponse[F]] =
-        for {
-          e <- Http4sRequest.execute[F](request).value
-          result <- Fatal.fromEither(e)
-        } yield result
+  implicit def HttpIO_Http4sRequest[F[_]: ConcurrentEffect]: HttpIO[F, Http4sRequest[F], HRequest[F], HResponse[F]] =
+    new HttpIO[F, Http4sRequest[F], HRequest[F], HResponse[F]] {
+      def execute(resources: Http4sRequest[F])(request: HRequest[F]): F[HResponse[F]] =
+        resources.client.fetch(request)(Applicative[F].pure)
     }
 }
 

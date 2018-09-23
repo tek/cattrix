@@ -27,6 +27,11 @@ extends AutoPlugin
           "-Ypartial-unification",
           "-language:higherKinds",
           "-language:implicitConversions",
+          "-Ywarn-value-discard",
+          "-Ywarn-unused:imports",
+          "-Ywarn-unused:implicits",
+          "-Ywarn-unused:params",
+          "-Ywarn-unused:patvars",
         ),
         fork := true,
       )

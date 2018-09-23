@@ -6,7 +6,6 @@ import scala.concurrent.{Future, ExecutionContext}
 import scala.collection.mutable.ArrayBuffer
 
 import cats.~>
-import org.specs2.Specification
 import com.google.inject.{TypeLiteral, AbstractModule}
 import play.api.Application
 import play.api.mvc.{AbstractController, ControllerComponents, Results}
@@ -14,7 +13,6 @@ import play.api.inject.bind
 import play.api.libs.ws.WSClient
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.test._
-import play.api.test.Helpers._
 import mockws.MockWS
 import mockws.MockWSHelpers.Action
 
@@ -40,7 +38,7 @@ extends PlaySpecification
   val payload = "ok!"
 
   val ws = MockWS {
-    case a => Action(Results.Ok(payload))
+    case _ => Action(Results.Ok(payload))
   }
 
   val metricsLog: ArrayBuffer[(String, Metric[Future, _])] = ArrayBuffer()
@@ -73,7 +71,7 @@ extends PlaySpecification
     val result = ctrl.act()(FakeRequest())
     contentAsString(result).must_==(payload)
       .and(metricsLog.toList.filter {
-        case (_, Run(a)) => false
+        case (_, Run(_)) => false
         case _ => true
       }.must_==(List(
         (Ctrl.metric, StartTimer("time")),

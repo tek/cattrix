@@ -3,15 +3,12 @@ package cattrix
 import java.net.ServerSocket
 import scala.concurrent.ExecutionContext
 
-import cats.Id
 import cats.data.{Kleisli, OptionT}
-import cats.syntax.all._
 import cats.effect.{IO, ContextShift}
 import cats.effect.internals.IOContextShift
 import org.specs2.Specification
-import fs2.{Stream, text}
-import org.http4s.{Request => HRequest, Response => HResponse, HttpService, Method, Uri, AuthedService, AuthedRequest}
-import org.http4s.Status
+import fs2.text
+import org.http4s.{Request => HRequest, Response => HResponse, HttpRoutes, Method, Uri, AuthedService, AuthedRequest}
 import org.http4s.headers.Authorization
 import org.http4s.BasicCredentials
 import org.http4s.dsl.io._
@@ -82,11 +79,11 @@ object Remote
 
   def middleware: AuthMiddleware[IO, Unit] = AuthMiddleware(auth, authFailure)
 
-  def authService: HttpService[IO] = middleware(AuthedService[Unit, IO](authRoutes))
+  def authService: HttpRoutes[IO] = middleware(AuthedService[Unit, IO](authRoutes))
 
-  def freeService: HttpService[IO] = HttpService[IO](freeRoutes)
+  def freeService: HttpRoutes[IO] = HttpRoutes.of[IO](freeRoutes)
 
-  def serve(port: Int)(implicit ec: ExecutionContext, cs: ContextShift[IO]): IO[Server[IO]] = {
+  def serve(port: Int)(implicit cs: ContextShift[IO]): IO[Server[IO]] = {
     BlazeBuilder[IO]
       .bindHttp(port, "localhost")
       .mountService(authService, "/auth")
@@ -99,12 +96,11 @@ object Local
 {
   import io.circe.generic.auto._
 
-  def http(implicit cs: ContextShift[IO]): Http[IO, HRequest[IO], HResponse[IO]] =
-    Http.fromConfig[IO](HttpConfig(Http4sRequest(), NoMetrics()))
-
   def remote(port: Int) = s"http://localhost:$port"
 
-  def test(port: Int)(creds: Option[Auth])(implicit cs: ContextShift[IO]): IO[HResponse[IO]] = {
+  def test(http: Http[IO, HRequest[IO], HResponse[IO]], port: Int)(creds: Option[Auth])
+  (implicit cs: ContextShift[IO])
+  : IO[HResponse[IO]] = {
     val request = Request("get", s"${remote(port)}/auth/resource", None, creds, Nil)
     for {
       nativeRequest <- Fatal.fromEither[IO, HRequest[IO]](HttpRequest.fromRequest[IO, HRequest[IO]](request))
@@ -112,10 +108,12 @@ object Local
     } yield response
   }
 
-  def routes(port: Int)(implicit cs: ContextShift[IO]): PartialFunction[HRequest[IO], IO[HResponse[IO]]] = {
-    case GET -> Root / "invalid" => test(port)(Some(Auth(invalidUserName, "")))
-    case GET -> Root / "valid" => test(port)(Some(Auth(allowedUser, "")))
-    case GET -> Root / "none" => test(port)(None)
+  def routes(http: Http[IO, HRequest[IO], HResponse[IO]], port: Int)
+  (implicit cs: ContextShift[IO])
+  : PartialFunction[HRequest[IO], IO[HResponse[IO]]] = {
+    case GET -> Root / "invalid" => test(http, port)(Some(Auth(invalidUserName, "")))
+    case GET -> Root / "valid" => test(http, port)(Some(Auth(allowedUser, "")))
+    case GET -> Root / "none" => test(http, port)(None)
     case GET -> Root / "json" =>
       for {
         customer <- http.getAs[Customer](s"${remote(port)}/free/json", "json")
@@ -126,8 +124,10 @@ object Local
       } yield response
   }
 
-  def service(port: Int)(implicit cs: ContextShift[IO]): HttpService[IO] =
-    HttpService[IO](routes(port))
+  def service(http: Http[IO, HRequest[IO], HResponse[IO]], port: Int)
+  (implicit cs: ContextShift[IO])
+  : HttpRoutes[IO] =
+    HttpRoutes.of[IO](routes(http, port))
 }
 
 class RequestSpec(implicit ec: ExecutionContext)
@@ -143,16 +143,17 @@ extends Specification
   implicit val contextShift: ContextShift[IO] =
     IOContextShift(ec)
 
-  def test(path: String): IO[(Int, String)] = {
-    val port = Util.freePort()
+  def execute(port: Int, path: String)(http: Http[IO, HRequest[IO], HResponse[IO]]): IO[(Int, String)] =
     for {
       server <- Remote.serve(port)
       uri <- IO.fromEither(Uri.fromString(s"/$path"))
-      response <- Local.service(port).orNotFound.run(HRequest(method = Method.GET, uri = uri))
+      response <- Local.service(http, port).orNotFound.run(HRequest(method = Method.GET, uri = uri))
       _ <- server.shutdown
       body <- response.as[String]
     } yield (response.status.code, body)
-  }
+
+  def test(path: String): IO[(Int, String)] =
+    Http4sRequest.bracket(NoMetrics())(execute(Util.freePort(), path))
 
   def valid = test("valid").unsafeRunSync must_== (200 -> payload)
 

@@ -1,7 +1,6 @@
 package cattrix
 
 import cats.Applicative
-import cats.effect.Sync
 
 case class Response(status: Int, body: String, headers: List[Header], cookies: List[Cookie])
 

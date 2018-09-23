@@ -1,18 +1,13 @@
 package cattrix
 
-import cats.ApplicativeError
-import cats.syntax.flatMap._
-import cats.syntax.functor._
-import cats.syntax.applicativeError._
 import cats.effect.Sync
-import cats.free.FreeT
 
 object MetricsPrograms
 {
   def errorMetric[F[_]: Sync, A](metric: String, result: Either[Throwable, A])
   : Metrics.Step[F, Unit] =
     result match {
-      case Right(Right(r)) => Metrics.unit
+      case Right(Right(_)) => Metrics.unit
       case _ => Metrics.mark[F](metric)
     }
 

@@ -1,9 +1,8 @@
 package cattrix
 
-import cats.syntax.all._
 import cats.effect.IO
 import org.specs2.Specification
-import fs2.{Stream, text}
+import fs2.text
 import org.http4s.{Request => HRequest, Response => HResponse, HttpRoutes, Method, Uri}
 import org.http4s.dsl.io._
 
@@ -11,8 +10,9 @@ object Service
 {
   def payload = "payload"
 
-  def handler(request: Request): IO[Response] =
-    IO.pure(Response.ok(payload))
+  def handler: Request => IO[Response] = {
+    case _ => IO.pure(Response.ok(payload))
+  }
 
   def http: Http[IO, Request, Response] =
     Http.fromConfig(HttpConfig(PureHttp(handler), NoMetrics()))

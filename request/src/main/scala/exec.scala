@@ -1,14 +1,9 @@
 package cattrix
 
-import scala.util.{Success, Failure}
-import scala.concurrent.Future
-
-import cats.{Monad, ApplicativeError, Applicative, MonadError}
+import cats.{Applicative, MonadError}
 import cats.syntax.flatMap._
 import cats.syntax.functor._
-import cats.syntax.either._
 import cats.effect.Sync
-import cats.free.FreeT
 import org.log4s.getLogger
 import io.circe.Decoder
 import io.circe.parser.decode

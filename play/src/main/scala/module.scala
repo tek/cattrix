@@ -1,6 +1,6 @@
 package cattrix
 
-import javax.inject.{Inject, Singleton, Provider}
+import javax.inject.{Inject, Provider}
 
 import scala.concurrent.{Future, ExecutionContext}
 
@@ -40,7 +40,6 @@ extends AbstractModule
 }
 
 class IOHttpProvider @Inject() (ws: WSClient, interpreter: CodahaleInterpreter[IO], config: Configuration)
-(implicit ec: ExecutionContext)
 extends Provider[Http[IO, Request, Response]]
 {
   def get: Http[IO, Request, Response] = {

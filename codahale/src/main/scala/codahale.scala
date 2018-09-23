@@ -2,9 +2,8 @@ package cattrix
 
 import java.util.concurrent.TimeUnit
 
-import cats.{Monad, ~>}
+import cats.~>
 import cats.data.Kleisli
-import cats.arrow.FunctionK
 import cats.effect.Sync
 import com.codahale.metrics.{MetricRegistry, Counter, Meter, Timer, SharedMetricRegistries, Histogram}
 

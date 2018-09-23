@@ -1,11 +1,8 @@
 package cattrix
 
-import cats.ApplicativeError
 import cats.syntax.flatMap._
 import cats.syntax.functor._
-import cats.syntax.applicativeError._
 import cats.effect.Sync
-import cats.free.FreeT
 
 object RequestMetricPrograms
 {
@@ -25,15 +22,12 @@ object RequestMetricPrograms
   : Metrics.Step[F, Unit] =
     result match {
       case Right(r) => responseMetric(metric, r)
-      case Left(error) => Metrics.mark[F]("fatal")
+      case Left(_) => Metrics.mark[F]("fatal")
     }
 
   def simpleTimed[F[_]: Sync, M, In, Out](
-    resources: M,
-    metrics: Metrics[F, M],
     task: RequestTask[F, In, Out],
     request: () => F[Out],
-    name: String,
   )
   (implicit res: HttpResponse[F, Out])
   : Metrics.Step[F, Out] = {
@@ -59,7 +53,7 @@ object RequestMetrics
   : F[Out] = {
     for {
       name <- task.metric.name(task.request)
-      prog = RequestMetricPrograms.simpleTimed(resources, metrics, task, request, name)
+      prog = RequestMetricPrograms.simpleTimed(task, request)
       result <- Metrics.compile(MetricTask(resources, name))(prog)
     } yield result
   }
